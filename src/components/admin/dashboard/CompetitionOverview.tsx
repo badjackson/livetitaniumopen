@@ -57,7 +57,7 @@ export default function CompetitionOverview() {
               {stat.change !== '-' && (
                 <div className={`text-xs ${
                   stat.changeType === 'positive' ? 'text-green-600' : 
-                  stat.changeType === 'negative' ? 'text-red-600' : 'text-gray-500'
+                  'text-gray-500'
                 }`}>
                   {stat.changeType === 'positive' ? '+' : ''}{stat.change}
                 </div>
