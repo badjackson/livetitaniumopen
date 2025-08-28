@@ -4,6 +4,5 @@
   "/login/page": "app/login/page.js",
   "/admin/juges/page": "app/admin/juges/page.js",
   "/admin/page": "app/admin/page.js",
-  "/admin/competiteurs/page": "app/admin/competiteurs/page.js",
   "/admin/prises/page": "app/admin/prises/page.js"
 }

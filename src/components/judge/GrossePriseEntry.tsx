@@ -47,7 +47,7 @@ interface GrossePriseEntry {
   competitorId: string;
   boxNumber: number;
   biggestCatch: number;
-  status: 'empty' | 'in_progress' | 'locked' | 'offline' | 'error';
+  status: 'empty' | 'in_progress' | 'locked_judge' | 'locked_admin' | 'offline_judge' | 'offline_admin' | 'error';
   timestamp?: Date;
   syncRetries?: number;
   errorMessage?: string;
