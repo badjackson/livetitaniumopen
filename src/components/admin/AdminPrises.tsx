@@ -168,6 +168,14 @@ export default function AdminPrises() {
       }
     };
 
+    window.addEventListener('storage', handleStorageChange);
+    window.addEventListener('online', handleOnlineSync);
+    
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('online', handleOnlineSync);
+    };
+  }, []);
     
     window.addEventListener('storage', handleStorageChange);
     window.addEventListener('online', handleOnlineSync);
