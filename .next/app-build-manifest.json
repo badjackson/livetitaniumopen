@@ -36,6 +36,31 @@
       "static/chunks/main-app.js",
       "static/chunks/app/admin/juges/page.js"
     ],
+    "/admin/prises/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/admin/prises/page.js"
+    ],
+    "/admin/grosse-prise/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/admin/grosse-prise/page.js"
+    ],
+    "/admin/calculs-live/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/admin/calculs-live/page.js"
+    ],
+    "/admin/classement-general/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/admin/classement-general/page.js"
+    ],
+    "/admin/apparence-publique/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/admin/apparence-publique/page.js"
+    ],
     "/_not-found/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
