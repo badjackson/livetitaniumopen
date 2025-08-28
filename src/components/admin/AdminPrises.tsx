@@ -124,13 +124,14 @@ export default function AdminPrises() {
     // Listen for storage changes for live updates
     const handleStorageChange = (e: StorageEvent) => {
       if (e.key === 'competitors') {
+        loadCompetitors();
+      }
+    };
+    
     // Set initial online status
     setIsOnline(navigator.onLine);
     setIsOnlineSimulation(navigator.onLine);
     
-        loadCompetitors();
-      }
-    };
     // Auto-sync when coming back online
     const handleOnlineSync = () => {
       setIsOnline(true);
@@ -168,15 +169,6 @@ export default function AdminPrises() {
       }
     };
 
-    window.addEventListener('storage', handleStorageChange);
-    window.addEventListener('online', handleOnlineSync);
-    
-    return () => {
-      window.removeEventListener('storage', handleStorageChange);
-      window.removeEventListener('online', handleOnlineSync);
-    };
-  }, []);
-    
     window.addEventListener('storage', handleStorageChange);
     window.addEventListener('online', handleOnlineSync);
     
@@ -666,6 +658,7 @@ export default function AdminPrises() {
   ).length;
 
   const isCurrentHourComplete = completedEntries >= 20;
+  
   return (
     <div className="h-screen flex flex-col">
       {/* Header */}
@@ -742,18 +735,17 @@ export default function AdminPrises() {
                   style={{ width: `${(completedEntries / 20) * 100}%` }}
                 />
               </div>
-                <span className="text-gray-900 dark:text-white">
-                  {isOnlineSimulation ? 'En ligne' : 'Hors ligne'}
-                </span>
-                <span className="text-gray-900 dark:text-white">{completedEntries}/20</span>
+              <span className="text-sm font-medium text-gray-900 dark:text-white">
+                {isOnlineSimulation ? 'En ligne' : 'Hors ligne'}
               </span>
-              <button
-                onClick={() => setIsOnlineSimulation(!isOnlineSimulation)}
-                className="text-xs px-2 py-1 bg-gray-200 dark:bg-gray-700 rounded text-gray-600 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600"
-              >
-                {isOnlineSimulation ? 'Simuler hors ligne' : 'Simuler en ligne'}
-              </button>
+              <span className="text-sm font-medium text-gray-900 dark:text-white">{completedEntries}/20</span>
             </div>
+            <button
+              onClick={() => setIsOnlineSimulation(!isOnlineSimulation)}
+              className="text-xs px-2 py-1 bg-gray-200 dark:bg-gray-700 rounded text-gray-600 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600"
+            >
+              {isOnlineSimulation ? 'Simuler hors ligne' : 'Simuler en ligne'}
+            </button>
           </div>
         </div>
       </div>
@@ -848,7 +840,7 @@ export default function AdminPrises() {
                   const status = getEntryStatus(competitor.id);
                   const actionIcon = getActionIcon(status);
                   const isSelected = selectedCompetitorId === competitor.id;
-                 const isLocked = ['locked_judge', 'locked_admin', 'offline_judge', 'offline_admin'].includes(status);
+                  const isLocked = ['locked_judge', 'locked_admin', 'offline_judge', 'offline_admin'].includes(status);
                   
                   return (
                     <tr 
