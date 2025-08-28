@@ -59,6 +59,64 @@ export default function AdminJuges() {
 
   const sectors = ['A', 'B', 'C', 'D', 'E', 'F'];
 
+  // Initial judges data - moved to component scope
+  const initialJudgesData: Judge[] = [
+    {
+      id: 'judge-a',
+      fullName: 'Juge A',
+      sector: 'A',
+      username: 'juge.a',
+      password: '#Juge@A',
+      lastLogin: new Date(Date.now() - 2 * 60 * 60 * 1000),
+      status: 'active'
+    },
+    {
+      id: 'judge-b',
+      fullName: 'Juge B',
+      sector: 'B',
+      username: 'juge.b',
+      password: '#Juge@B',
+      lastLogin: new Date(Date.now() - 3 * 60 * 60 * 1000),
+      status: 'active'
+    },
+    {
+      id: 'judge-c',
+      fullName: 'Juge C',
+      sector: 'C',
+      username: 'juge.c',
+      password: '#Juge@C',
+      lastLogin: new Date(Date.now() - 4 * 60 * 60 * 1000),
+      status: 'active'
+    },
+    {
+      id: 'judge-d',
+      fullName: 'Juge D',
+      sector: 'D',
+      username: 'juge.d',
+      password: '#Juge@D',
+      lastLogin: new Date(Date.now() - 5 * 60 * 60 * 1000),
+      status: 'active'
+    },
+    {
+      id: 'judge-e',
+      fullName: 'Juge E',
+      sector: 'E',
+      username: 'juge.e',
+      password: '#Juge@E',
+      lastLogin: new Date(Date.now() - 6 * 60 * 60 * 1000),
+      status: 'active'
+    },
+    {
+      id: 'judge-f',
+      fullName: 'Juge F',
+      sector: 'F',
+      username: 'juge.f',
+      password: '#Juge@F',
+      lastLogin: new Date(Date.now() - 7 * 60 * 60 * 1000),
+      status: 'active'
+    }
+  ];
+
   // Initialize with some mock data
   useEffect(() => {
     // Load judges from localStorage or use initial data
@@ -82,71 +140,15 @@ export default function AdminJuges() {
       }
       
       // Fallback to initial data
-      const initialJudges: Judge[] = [
-        {
-          id: 'judge-a',
-          fullName: 'Juge A',
-          sector: 'A',
-          username: 'juge.a',
-          password: '#Juge@A',
-          lastLogin: new Date(Date.now() - 2 * 60 * 60 * 1000),
-          status: 'active'
-        },
-        {
-          id: 'judge-b',
-          fullName: 'Juge B',
-          sector: 'B',
-          username: 'juge.b',
-          password: '#Juge@B',
-          lastLogin: new Date(Date.now() - 3 * 60 * 60 * 1000),
-          status: 'active'
-        },
-        {
-          id: 'judge-c',
-          fullName: 'Juge C',
-          sector: 'C',
-          username: 'juge.c',
-          password: '#Juge@C',
-          lastLogin: new Date(Date.now() - 4 * 60 * 60 * 1000),
-          status: 'active'
-        },
-        {
-          id: 'judge-d',
-          fullName: 'Juge D',
-          sector: 'D',
-          username: 'juge.d',
-          password: '#Juge@D',
-          lastLogin: new Date(Date.now() - 5 * 60 * 60 * 1000),
-          status: 'active'
-        },
-        {
-          id: 'judge-e',
-          fullName: 'Juge E',
-          sector: 'E',
-          username: 'juge.e',
-          password: '#Juge@E',
-          lastLogin: new Date(Date.now() - 6 * 60 * 60 * 1000),
-          status: 'active'
-        },
-        {
-          id: 'judge-f',
-          fullName: 'Juge F',
-          sector: 'F',
-          username: 'juge.f',
-          password: '#Juge@F',
-          lastLogin: new Date(Date.now() - 7 * 60 * 60 * 1000),
-          status: 'active'
-        }
-      ];
       
-      setJudges(initialJudges);
+      setJudges(initialJudgesData);
       
       // Save initial data to localStorage
       if (typeof window !== 'undefined') {
-        localStorage.setItem('judges', JSON.stringify(initialJudges));
+        localStorage.setItem('judges', JSON.stringify(initialJudgesData));
       }
       
-      return initialJudges;
+      return initialJudgesData;
     };
 
     const loadedJudges = loadJudges();
@@ -165,7 +167,7 @@ export default function AdminJuges() {
           lastLogin: '2025-01-27 15:30',
           createdAt: '2025-01-01',
         },
-        ...initialJudges.map((judge, index) => ({
+        ...loadedJudges.map((judge, index) => ({
           id: index + 2,
           name: judge.fullName,
           username: judge.username,
