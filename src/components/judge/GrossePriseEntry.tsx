@@ -366,7 +366,6 @@ export default function GrossePriseEntry() {
         return { icon: Lock, tooltip: 'Verrouillé (Admin) - lecture seule', color: 'text-orange-600' };
       case 'offline_judge':
       case 'offline_admin':
-      case 'offline':
         return { icon: CloudOff, tooltip: 'Hors ligne (en attente)', color: 'text-amber-600' };
       case 'error':
         return { icon: AlertTriangle, tooltip: 'Corriger et sauvegarder', color: 'text-red-600' };
