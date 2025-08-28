@@ -7,5 +7,8 @@
   "/admin/grosse-prise/page": "app/admin/grosse-prise/page.js",
   "/admin/calculs-live/page": "app/admin/calculs-live/page.js",
   "/admin/classement-general/page": "app/admin/classement-general/page.js",
-  "/admin/apparence-publique/page": "app/admin/apparence-publique/page.js"
+  "/admin/apparence-publique/page": "app/admin/apparence-publique/page.js",
+  "/admin/settings/page": "app/admin/settings/page.js",
+  "/admin/competiteurs/page": "app/admin/competiteurs/page.js",
+  "/admin/page": "app/admin/page.js"
 }
