@@ -2,6 +2,7 @@ import forms from '@tailwindcss/forms';
 import typography from '@tailwindcss/typography';
 
 /** @type {import('tailwindcss').Config} */
+/** @type {import('tailwindcss').Config} */
 export default {
   content: [
     './src/pages/**/*.{js,ts,jsx,tsx,mdx}',
