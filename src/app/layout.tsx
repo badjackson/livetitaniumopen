@@ -4,6 +4,7 @@ import './globals.css';
 import { ThemeProvider } from '@/components/providers/ThemeProvider';
 import { SocketProvider } from '@/components/providers/SocketProvider';
 import { TranslationProvider } from '@/components/providers/TranslationProvider';
+import { FirebaseProvider } from '@/components/providers/FirebaseProvider';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -158,7 +159,9 @@ export default function RootLayout({
         <ThemeProvider>
           <SocketProvider>
             <TranslationProvider>
-              {children}
+              <FirebaseProvider>
+                {children}
+              </FirebaseProvider>
             </TranslationProvider>
           </SocketProvider>
         </ThemeProvider>
