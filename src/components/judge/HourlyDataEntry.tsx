@@ -50,7 +50,6 @@ interface HourlyEntry {
   totalWeight: number;
   status: 'empty' | 'in_progress' | 'locked_judge' | 'locked_admin' | 'offline_judge' | 'offline_admin' | 'error';
   timestamp?: Date;
-  source: 'Judge' | 'Admin';
   syncRetries?: number;
   errorMessage?: string;
 }
@@ -59,10 +58,9 @@ interface HourStatus {
   hour: number;
   entries: { [competitorId: string]: HourlyEntry };
   completedCount: number;
-  isUnlocked: boolean;
 }
 
-// Get competitors for specific sector from localStorage
+// Mock competitors data - Sector A (20 competitors)
 const getCompetitorsForSector = (sector: string): Competitor[] => {
   if (typeof window !== 'undefined') {
     try {
@@ -80,13 +78,18 @@ const getCompetitorsForSector = (sector: string): Competitor[] => {
             sector: comp.sector
           }));
       }
+      
     } catch (error) {
       console.error('Error loading competitors:', error);
     }
   }
   
+  // Fallback - empty array
   return [];
 };
+
+// Calculate total competitors
+const totalCompetitors = 20; // Always 20 per sector
 
 export default function HourlyDataEntry() {
   const t = useTranslations('judge');
@@ -111,7 +114,7 @@ export default function HourlyDataEntry() {
   // Get judge's assigned sector
   const judgeSector = currentUser?.sector || 'A';
 
-  // Dynamic competitors based on judge's sector
+  // Dynamic competitors based on judge's assigned sector
   const [mockCompetitors, setMockCompetitors] = useState<Competitor[]>([]);
   
   // Load competitors on mount and listen for changes
@@ -156,30 +159,30 @@ export default function HourlyDataEntry() {
             }
           }
           
-          const sectorData = allHourlyData[judgeSector] || {};
+          const sectorData = dataToUse[judgeSector] || {};
+          
           const newHourStatuses: { [hour: number]: HourStatus } = {};
           
           for (let h = 1; h <= 7; h++) {
-            const entries = sectorData[h] || {};
+            const hourData = sectorData[h] || {};
             
             // Check for individual entry backups if main data is missing
-            if (Object.keys(entries).length === 0) {
+            if (Object.keys(hourData).length === 0) {
               mockCompetitors.forEach(comp => {
-                const entryKey = `entry_${judgeSector}_${h}_${comp.id}`;
+                const entryKey = `hourlyData_${judgeSector}_${h}_${comp.id}`;
                 const savedEntry = localStorage.getItem(entryKey);
                 if (savedEntry) {
                   try {
-                    entries[comp.id] = JSON.parse(savedEntry);
+                    hourData[comp.id] = JSON.parse(savedEntry);
                   } catch (error) {
-                    console.error('Error parsing individual entry:', error);
+                    console.error('Error parsing individual hourly entry:', error);
                   }
                 }
               });
             }
             
-            // Convert timestamp strings back to Date objects
-            const processedEntries: { [key: string]: any } = {};
-            Object.entries(entries).forEach(([competitorId, entry]: [string, any]) => {
+            const processedEntries: { [key: string]: HourlyEntry } = {};
+            Object.entries(hourData).forEach(([competitorId, entry]: [string, any]) => {
               processedEntries[competitorId] = {
                 ...entry,
                 timestamp: entry.timestamp ? new Date(entry.timestamp) : undefined
@@ -189,16 +192,15 @@ export default function HourlyDataEntry() {
             newHourStatuses[h] = {
               hour: h,
               entries: processedEntries,
-              completedCount: Object.values(processedEntries).filter((e: any) => 
+              completedCount: Object.values(processedEntries).filter(e => 
                 ['locked_judge', 'locked_admin', 'offline_judge', 'offline_admin'].includes(e.status)
-              ).length,
-              isUnlocked: true // All hours are always unlocked
+              ).length
             };
           }
           
           setHourStatuses(newHourStatuses);
         } catch (error) {
-          console.error('Failed to load persisted data:', error);
+          console.error('Failed to load persisted hourly data:', error);
           
           // Try to recover from sessionStorage
           try {
@@ -210,7 +212,7 @@ export default function HourlyDataEntry() {
               loadPersistedData();
             }
           } catch (recoveryError) {
-            console.error('Failed to recover from backup:', recoveryError);
+            console.error('Failed to recover hourly data from backup:', recoveryError);
           }
         }
       }
@@ -229,7 +231,7 @@ export default function HourlyDataEntry() {
         if (e.key === 'hourlyData') {
           if (!e.newValue || e.newValue === 'null') {
             // Data was reset - clear all entries
-            setEntries({});
+            setHourStatuses({});
             setSelectedCompetitorId(null);
             setFishCount('');
             setTotalWeight('');
@@ -238,7 +240,7 @@ export default function HourlyDataEntry() {
             // Show reset notification
             const notification = document.createElement('div');
             notification.className = 'fixed top-4 right-4 bg-red-600 text-white px-4 py-3 rounded-lg text-sm z-50 shadow-lg';
-            notification.textContent = 'Données de compétition réinitialisées par l\'admin';
+            notification.textContent = 'Données horaires réinitialisées par l\'admin';
             document.body.appendChild(notification);
             
             setTimeout(() => {
@@ -253,13 +255,14 @@ export default function HourlyDataEntry() {
           try {
             const allHourlyData = JSON.parse(e.newValue);
             const sectorData = allHourlyData[judgeSector] || {};
+            
             const newHourStatuses: { [hour: number]: HourStatus } = {};
             
             for (let h = 1; h <= 7; h++) {
-              const entries = sectorData[h] || {};
-              // Convert timestamp strings back to Date objects
-              const processedEntries: { [key: string]: any } = {};
-              Object.entries(entries).forEach(([competitorId, entry]: [string, any]) => {
+              const hourData = sectorData[h] || {};
+              
+              const processedEntries: { [key: string]: HourlyEntry } = {};
+              Object.entries(hourData).forEach(([competitorId, entry]: [string, any]) => {
                 processedEntries[competitorId] = {
                   ...entry,
                   timestamp: entry.timestamp ? new Date(entry.timestamp) : undefined
@@ -269,16 +272,15 @@ export default function HourlyDataEntry() {
               newHourStatuses[h] = {
                 hour: h,
                 entries: processedEntries,
-                completedCount: Object.values(processedEntries).filter((e: any) => 
+                completedCount: Object.values(processedEntries).filter(e => 
                   ['locked_judge', 'locked_admin', 'offline_judge', 'offline_admin'].includes(e.status)
-                ).length,
-                isUnlocked: h <= 3 // Mock: H1-H3 are unlocked
+                ).length
               };
             }
             
             setHourStatuses(newHourStatuses);
           } catch (error) {
-            console.error('Failed to sync real-time data:', error);
+            console.error('Failed to sync real-time hourly data:', error);
           }
         }
       };
@@ -293,8 +295,7 @@ export default function HourlyDataEntry() {
     return hourStatuses[currentHour] || {
       hour: currentHour,
       entries: {},
-      completedCount: 0,
-      isUnlocked: currentHour <= 3
+      completedCount: 0
     };
   }, [hourStatuses, currentHour]);
 
@@ -330,61 +331,6 @@ export default function HourlyDataEntry() {
     return filtered;
   }, [mockCompetitors, searchQuery, showIncompleteOnly, currentHourStatus.entries]);
 
-  // Initialize data
-  useEffect(() => {
-    // Initialize hour statuses for judge's sector only
-    if (Object.keys(hourStatuses).length === 0) {
-      const statuses: { [hour: number]: HourStatus } = {};
-      for (let h = 1; h <= 7; h++) {
-        statuses[h] = {
-          hour: h,
-          entries: {},
-          completedCount: 0,
-          isUnlocked: true, // All hours are always unlocked
-        };
-      }
-      setHourStatuses(statuses);
-    }
-  }, [hourStatuses]);
-
-  // Update localStorage when entries change
-  const updateLocalStorage = (hour: number, competitorId: string, entry: HourlyEntry) => {
-    if (typeof window !== 'undefined') {
-      try {
-        const allHourlyData = JSON.parse(localStorage.getItem('hourlyData') || '{}');
-        if (!allHourlyData[judgeSector]) allHourlyData[judgeSector] = {};
-        if (!allHourlyData[judgeSector][hour]) allHourlyData[judgeSector][hour] = {};
-        
-        allHourlyData[judgeSector][hour][competitorId] = entry;
-        
-        localStorage.setItem('hourlyData', JSON.stringify(allHourlyData));
-        
-        // Trigger storage event for real-time updates
-        window.dispatchEvent(new StorageEvent('storage', {
-          key: 'hourlyData',
-          newValue: JSON.stringify(allHourlyData)
-        }));
-        
-        // Create backup in sessionStorage for extra safety
-        sessionStorage.setItem('hourlyDataBackup', JSON.stringify(allHourlyData));
-        
-        // Also store individual entry for recovery
-        const entryKey = `entry_${judgeSector}_${hour}_${competitorId}`;
-        localStorage.setItem(entryKey, JSON.stringify(entry));
-      } catch (error) {
-        console.error('Failed to store entry locally:', error);
-        
-        // Fallback: try to save in sessionStorage
-        try {
-          const fallbackKey = `fallback_${judgeSector}_${hour}_${competitorId}`;
-          sessionStorage.setItem(fallbackKey, JSON.stringify(entry));
-        } catch (fallbackError) {
-          console.error('Failed to store entry in sessionStorage:', fallbackError);
-        }
-      }
-    }
-  };
-
   // Online/offline detection
   useEffect(() => {
     // Set initial online status
@@ -406,15 +352,16 @@ export default function HourlyDataEntry() {
           const sectorData = allHourlyData[judgeSector] || {};
           
           // Update any offline entries to online status
-          Object.keys(sectorData).forEach(hour => {
-            Object.keys(sectorData[hour] || {}).forEach(competitorId => {
-              const entry = sectorData[hour][competitorId];
+          for (let hour = 1; hour <= 7; hour++) {
+            const hourData = sectorData[hour] || {};
+            Object.keys(hourData).forEach(competitorId => {
+              const entry = hourData[competitorId];
               if (entry.status === 'offline_judge') {
                 entry.status = 'locked_judge';
                 entry.timestamp = new Date();
               }
             });
-          });
+          }
           
           if (Object.keys(sectorData).length > 0) {
             allHourlyData[judgeSector] = sectorData;
@@ -427,10 +374,11 @@ export default function HourlyDataEntry() {
             }));
           }
         } catch (error) {
-          console.error('Error syncing offline entries:', error);
+          console.error('Error syncing offline hourly entries:', error);
         }
       }
     };
+
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
     window.addEventListener('online', handleOnlineSync);
@@ -440,7 +388,7 @@ export default function HourlyDataEntry() {
       window.removeEventListener('offline', handleOffline);
       window.removeEventListener('online', handleOnlineSync);
     };
-  }, []);
+  }, [judgeSector]);
 
   // Auto-set weight to 0 when fish count is 0
   useEffect(() => {
@@ -531,19 +479,19 @@ export default function HourlyDataEntry() {
   const getStatusBadge = (status: HourlyEntry['status']) => {
     switch (status) {
       case 'locked_judge':
-        return <Badge variant="secondary" className="bg-green-100 text-green-800">Verrouillé (Juge)</Badge>;
+        return <Badge variant="secondary" className="bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-300">Verrouillé (Juge)</Badge>;
       case 'locked_admin':
-        return <Badge variant="secondary" className="bg-orange-100 text-orange-800">Verrouillé (Admin)</Badge>;
+        return <Badge variant="secondary" className="bg-orange-100 text-orange-800 dark:bg-orange-900/20 dark:text-orange-300">Verrouillé (Admin)</Badge>;
       case 'offline_judge':
-        return <Badge variant="secondary" className="bg-amber-100 text-amber-800">Hors ligne (Juge)</Badge>;
+        return <Badge variant="secondary" className="bg-amber-100 text-amber-800 dark:bg-amber-900/20 dark:text-amber-300">Hors ligne (Juge)</Badge>;
       case 'offline_admin':
-        return <Badge variant="secondary" className="bg-amber-100 text-amber-800">Hors ligne (Admin)</Badge>;
+        return <Badge variant="secondary" className="bg-amber-100 text-amber-800 dark:bg-amber-900/20 dark:text-amber-300">Hors ligne (Admin)</Badge>;
       case 'error':
-        return <Badge variant="secondary" className="bg-red-100 text-red-800">Erreur</Badge>;
+        return <Badge variant="secondary" className="bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-300">Erreur</Badge>;
       case 'in_progress':
-        return <Badge variant="secondary" className="bg-blue-100 text-blue-800">En cours</Badge>;
+        return <Badge variant="secondary" className="bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-300">En cours</Badge>;
       default:
-        return <Badge variant="outline" className="bg-gray-100 text-gray-600">Vide</Badge>;
+        return <Badge variant="outline" className="bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300">Vide</Badge>;
     }
   };
 
@@ -578,19 +526,19 @@ export default function HourlyDataEntry() {
     const newErrors: { [key: string]: string } = {};
 
     if (!fishCount.trim()) {
-      newErrors.fishCount = t('fishCountRequired');
+      newErrors.fishCount = 'Nombre de prises requis';
     } else if (parseInt(fishCount) < 0) {
-      newErrors.fishCount = t('fishCountMustBePositive');
+      newErrors.fishCount = 'Le nombre de prises doit être ≥ 0';
     }
 
     if (!totalWeight.trim()) {
-      newErrors.totalWeight = t('totalWeightRequired');
+      newErrors.totalWeight = 'Poids total requis';
     } else if (parseInt(totalWeight) < 0) {
-      newErrors.totalWeight = t('totalWeightMustBePositive');
+      newErrors.totalWeight = 'Le poids total doit être ≥ 0';
     }
 
     if (parseInt(fishCount) === 0 && parseInt(totalWeight) !== 0) {
-      newErrors.totalWeight = t('weightMustBeZeroWhenNoFish');
+      newErrors.totalWeight = 'Le poids total doit être 0 quand le nombre de prises est 0';
     }
 
     setErrors(newErrors);
@@ -610,7 +558,6 @@ export default function HourlyDataEntry() {
       totalWeight: parseInt(totalWeight),
       status: isOnlineSimulation ? 'locked_judge' : 'offline_judge',
       timestamp: new Date(),
-      source: 'Judge',
       syncRetries: 0,
     };
 
@@ -618,17 +565,56 @@ export default function HourlyDataEntry() {
     setHourStatuses(prev => ({
       ...prev,
       [currentHour]: {
-        ...prev[currentHour],
+        ...(prev[currentHour] || { hour: currentHour, entries: {}, completedCount: 0 }),
         entries: {
-          ...prev[currentHour].entries,
+          ...(prev[currentHour]?.entries || {}),
           [selectedCompetitor.id]: entry
         },
-        completedCount: Object.values({...prev[currentHour].entries, [selectedCompetitor.id]: entry})
+        completedCount: Object.values({...(prev[currentHour]?.entries || {}), [selectedCompetitor.id]: entry})
           .filter(e => ['locked_judge', 'locked_admin', 'offline_judge', 'offline_admin'].includes(e.status)).length
       }
     }));
 
     // Store in localStorage for offline support
+    const updateLocalStorage = (hour: number, competitorId: string, entry: HourlyEntry) => {
+      if (typeof window !== 'undefined') {
+        try {
+          const allHourlyData = JSON.parse(localStorage.getItem('hourlyData') || '{}');
+          if (!allHourlyData[judgeSector]) {
+            allHourlyData[judgeSector] = {};
+          }
+          if (!allHourlyData[judgeSector][hour]) {
+            allHourlyData[judgeSector][hour] = {};
+          }
+          allHourlyData[judgeSector][hour][competitorId] = entry;
+          localStorage.setItem('hourlyData', JSON.stringify(allHourlyData));
+          
+          // Trigger storage event for real-time updates
+          window.dispatchEvent(new StorageEvent('storage', {
+            key: 'hourlyData',
+            newValue: JSON.stringify(allHourlyData)
+          }));
+          
+          // Create backup in sessionStorage for extra safety
+          sessionStorage.setItem('hourlyDataBackup', JSON.stringify(allHourlyData));
+          
+          // Also store individual entry for recovery
+          const entryKey = `hourlyData_${judgeSector}_${hour}_${competitorId}`;
+          localStorage.setItem(entryKey, JSON.stringify(entry));
+        } catch (error) {
+          console.error('Failed to save hourly data to localStorage:', error);
+          
+          // Fallback: try to save in sessionStorage
+          try {
+            const fallbackKey = `fallback_hourlyData_${judgeSector}_${hour}_${competitorId}`;
+            sessionStorage.setItem(fallbackKey, JSON.stringify(entry));
+          } catch (fallbackError) {
+            console.error('Failed to store hourly entry in sessionStorage:', fallbackError);
+          }
+        }
+      }
+    };
+
     updateLocalStorage(currentHour, selectedCompetitor.id, entry);
 
     setTimeout(() => {
@@ -678,7 +664,7 @@ export default function HourlyDataEntry() {
           // Show success banner
           const banner = document.createElement('div');
           banner.className = 'fixed top-20 left-1/2 transform -translate-x-1/2 bg-green-600 text-white px-6 py-3 rounded-lg text-sm z-50 shadow-lg';
-          banner.textContent = t('hourCompleted').replace('{hour}', currentHour.toString());
+          banner.textContent = `H${currentHour} terminée (20/20)`;
           document.body.appendChild(banner);
           
           setTimeout(() => {
@@ -735,37 +721,11 @@ export default function HourlyDataEntry() {
     return false;
   };
 
-  // Modified save handlers to check for duplicates
-  const handleSave = () => {
-    if (handleDuplicateSubmission()) return;
-    handleSaveEntry(false);
-  };
-
-  const handleSaveAndNext = () => {
-    if (handleDuplicateSubmission()) return;
-    handleSaveEntry(true);
-  };
-
-  const adjustFishCount = (delta: number) => {
-    const current = parseInt(fishCount) || 0;
-    const newValue = Math.max(0, current + delta);
-    setFishCount(newValue.toString());
-  };
-
-  const adjustTotalWeight = (delta: number) => {
-    const current = parseInt(totalWeight) || 0;
-    const newValue = Math.max(0, current + delta);
-    setTotalWeight(newValue.toString());
-  };
-
-  // Simulate offline mode for testing
-  const toggleOfflineMode = () => {
-    setIsOnlineSimulation(!isOnlineSimulation);
-    setIsOnline(!isOnlineSimulation);
-  };
-
-  // Calculate total competitors
-  const totalCompetitors = mockCompetitors.length;
+  // Calculate completion stats for current hour
+  const completedEntries = mockCompetitors.filter(comp => {
+    const entry = currentHourStatus.entries[comp.id];
+    return entry && ['locked_judge', 'locked_admin', 'offline_judge', 'offline_admin'].includes(entry.status);
+  }).length;
 
   return (
     <div className="h-screen flex flex-col">
@@ -788,7 +748,7 @@ export default function HourlyDataEntry() {
                 </Badge>
               )}
               <button
-                onClick={toggleOfflineMode}
+                onClick={() => setIsOnlineSimulation(!isOnlineSimulation)}
                 className="text-xs px-2 py-1 bg-gray-200 dark:bg-gray-700 rounded text-gray-600 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600"
               >
                 {isOnlineSimulation ? 'Simuler hors ligne' : 'Simuler en ligne'}
@@ -817,10 +777,10 @@ export default function HourlyDataEntry() {
           <div className="flex space-x-1">
             {[1, 2, 3, 4, 5, 6, 7].map(hour => {
               const hourStatus = hourStatuses[hour];
-              const isComplete = hourStatus && Object.values(hourStatus.entries).filter(e => 
+              const completed = Object.values(hourStatus?.entries || {}).filter(e => 
                 ['locked_judge', 'locked_admin', 'offline_judge', 'offline_admin'].includes(e.status)
-              ).length === totalCompetitors;
-              const isUnlocked = true; // All hours are always available
+              ).length;
+              const isComplete = completed === 20;
               
               return (
                 <Button
@@ -845,13 +805,40 @@ export default function HourlyDataEntry() {
               <div className="w-32 bg-gray-200 dark:bg-gray-700 rounded-full h-2">
                 <div 
                   className="bg-green-500 h-2 rounded-full transition-all duration-300"
-                  style={{ width: `${(currentHourStatus.completedCount / totalCompetitors) * 100}%` }}
+                  style={{ width: `${(completedEntries / totalCompetitors) * 100}%` }}
                 />
               </div>
-              <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                <span className="text-gray-900 dark:text-white">{currentHourStatus.completedCount}/{totalCompetitors}</span>
+              <span className="text-sm font-medium">
+                {completedEntries}/{totalCompetitors}
               </span>
             </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Filters and Actions */}
+      <div className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 p-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-4">
+            <div className="flex-1 relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder={t('searchPlaceholder')}
+                className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm"
+              />
+            </div>
+            <Button
+              variant={showIncompleteOnly ? 'primary' : 'outline'}
+              size="sm"
+              onClick={() => setShowIncompleteOnly(!showIncompleteOnly)}
+              className="flex items-center space-x-1"
+            >
+              <Filter className="w-4 h-4" />
+              <span>{t('incompleteOnly')}</span>
+            </Button>
           </div>
         </div>
       </div>
@@ -860,48 +847,21 @@ export default function HourlyDataEntry() {
       <div className="flex-1 flex overflow-hidden">
         {/* Left Panel - Table */}
         <div className="flex-1 flex flex-col min-w-0">
-          {/* Search and Filters */}
-          <div className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 p-4">
-            <div className="flex items-center space-x-4">
-              <div className="flex-1 relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder={t('searchPlaceholder')}
-                  className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm"
-                />
-              </div>
-              <Button
-                variant={showIncompleteOnly ? 'primary' : 'outline'}
-                size="sm"
-                onClick={() => setShowIncompleteOnly(!showIncompleteOnly)}
-                className="flex items-center space-x-1"
-              >
-                <Filter className="w-4 h-4" />
-                <span>{t('incompleteOnly')}</span>
-              </Button>
-            </div>
-          </div>
-
-          {/* Table */}
           <div className="flex-1 overflow-auto">
             <table className="w-full">
-              {/* Sticky Header */}
               <thead className="bg-gray-50 dark:bg-gray-800 sticky top-0 z-10">
                 <tr>
                   <th className="sticky left-0 bg-gray-50 dark:bg-gray-800 px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider border-r border-gray-200 dark:border-gray-700">
                     {t('action')}
                   </th>
                   <th className="sticky left-16 bg-gray-50 dark:bg-gray-800 px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider border-r border-gray-200 dark:border-gray-700">
-                    BOX N°
+                    {t('boxNumber')}
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                     {t('competitor')}
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                    Équipe
+                    {t('club')}
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                     {t('fishCountShort')}
@@ -923,7 +883,7 @@ export default function HourlyDataEntry() {
                   const status = getEntryStatus(competitor.id);
                   const actionIcon = getActionIcon(status);
                   const isSelected = selectedCompetitorId === competitor.id;
-                  const isLocked = status === 'locked_judge' || status === 'locked_admin' || status === 'offline_judge' || status === 'offline_admin';
+                  const isLocked = ['locked_judge', 'locked_admin', 'offline_judge', 'offline_admin'].includes(status);
                   
                   return (
                     <tr 
@@ -935,7 +895,7 @@ export default function HourlyDataEntry() {
                       {/* Action Column - Sticky */}
                       <td className={`sticky left-0 ${getRowStyling(status)} px-4 py-4 border-r border-gray-200 dark:border-gray-700`}>
                         <button
-                          className={`w-12 h-12 rounded-lg flex items-center justify-center transition-colors ${actionIcon.color} ${isLocked ? 'cursor-not-allowed opacity-60' : 'hover:bg-gray-100 dark:hover:bg-gray-800'}`}
+                          className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors ${actionIcon.color} ${isLocked ? 'cursor-not-allowed opacity-60' : 'hover:bg-gray-100 dark:hover:bg-gray-800'}`}
                           title={actionIcon.tooltip}
                           disabled={isLocked}
                           onClick={(e) => {
@@ -945,7 +905,7 @@ export default function HourlyDataEntry() {
                             }
                           }}
                         >
-                          <actionIcon.icon className="w-5 h-5" />
+                          <actionIcon.icon className="w-4 h-4" />
                         </button>
                       </td>
                       
@@ -963,7 +923,7 @@ export default function HourlyDataEntry() {
                         </span>
                       </td>
                       
-                      {/* Équipe */}
+                      {/* Club */}
                       <td className="px-4 py-4 whitespace-nowrap">
                         <span className="text-gray-900 dark:text-white">
                           {competitor.equipe}
@@ -972,40 +932,20 @@ export default function HourlyDataEntry() {
                       
                       {/* Fish Count */}
                       <td className="px-4 py-4 whitespace-nowrap">
-                        {entry && entry.status !== 'empty' ? (
-                          <span className={`font-semibold ${isLocked ? 'text-green-700 dark:text-green-300' : 'text-gray-900 dark:text-white'}`}>
-                            {entry.fishCount}
-                          </span>
-                        ) : (
-                          <span className="text-gray-400">-</span>
-                        )}
+                        {entry ? <span className="font-semibold text-gray-900 dark:text-white">{entry.fishCount}</span> : <span className="text-gray-400 dark:text-gray-500">-</span>}
                       </td>
                       
                       {/* Total Weight */}
                       <td className="px-4 py-4 whitespace-nowrap">
-                        {entry && entry.status !== 'empty' ? (
-                          <span className={`font-semibold ${isLocked ? 'text-green-700 dark:text-green-300' : 'text-gray-900 dark:text-white'}`}>
-                            {formatWeight(entry.totalWeight)}
-                          </span>
-                        ) : (
-                          <span className="text-gray-400">-</span>
-                        )}
+                        {entry ? <span className="font-semibold text-gray-900 dark:text-white">{formatWeight(entry.totalWeight)}</span> : <span className="text-gray-400 dark:text-gray-500">-</span>}
                       </td>
                       
                       {/* Timestamp */}
                       <td className="px-4 py-4 whitespace-nowrap">
-                        {entry && entry.timestamp ? (
-                          <span className={`font-mono text-sm ${isLocked ? 'text-green-600 dark:text-green-400' : 'text-gray-600 dark:text-gray-300'}`}>
-                            {entry.timestamp.toLocaleString('fr-FR', {
-                              hour: '2-digit',
-                              minute: '2-digit',
-                              second: '2-digit',
-                              timeZone: 'Africa/Tunis',
-                              hour12: false 
-                            })}
-                          </span>
+                        {entry?.timestamp ? (
+                          <span className="font-mono text-sm text-gray-600 dark:text-gray-300">{formatTime(entry.timestamp)}</span>
                         ) : (
-                          <span className="text-gray-400">-</span>
+                          <span className="text-gray-400 dark:text-gray-500">-</span>
                         )}
                       </td>
                       
@@ -1038,7 +978,6 @@ export default function HourlyDataEntry() {
             </div>
           ) : (
             <div className="h-full flex flex-col">
-              {/* Editor Header */}
               <div className="p-4 border-b border-gray-200 dark:border-gray-700">
                 <div className="flex items-center justify-between">
                   <h3 className="font-semibold text-gray-900 dark:text-white">
@@ -1048,22 +987,20 @@ export default function HourlyDataEntry() {
                     variant="ghost"
                     size="sm"
                     onClick={() => setIsEditorCollapsed(true)}
-                    className="md:hidden"
                   >
                     <ChevronRight className="w-4 h-4" />
                   </Button>
                 </div>
               </div>
 
-              {/* Editor Content */}
               <div className="flex-1 p-4 overflow-y-auto">
                 {selectedCompetitor ? (
                   <div className="space-y-6">
-                    {/* Competitor Identity (Read-only) */}
+                    {/* Competitor Identity */}
                     <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
                       <div className="space-y-2">
                         <div className="flex items-center justify-between">
-                          <span className="text-sm text-gray-600 dark:text-gray-400">{t('boxNumber')}:</span>
+                          <span className="text-sm text-gray-600 dark:text-gray-400">BOX N°:</span>
                           <span className="font-mono font-semibold text-gray-900 dark:text-white">{selectedCompetitor.boxCode}</span>
                         </div>
                         <div className="flex items-center justify-between">
@@ -1074,6 +1011,18 @@ export default function HourlyDataEntry() {
                           <span className="text-sm text-gray-600 dark:text-gray-400">{t('club')}:</span>
                           <span className="font-medium text-gray-900 dark:text-white">{selectedCompetitor.equipe}</span>
                         </div>
+                        {selectedEntry && (
+                          <>
+                            <div className="flex items-center justify-between">
+                              <span className="text-sm text-gray-600 dark:text-gray-400">Source:</span>
+                              <Badge variant="outline" className="text-xs">Juge</Badge>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <span className="text-sm text-gray-600 dark:text-gray-400">Dernière MAJ:</span>
+                              <span className="text-sm">{selectedEntry.timestamp ? formatTime(selectedEntry.timestamp) : '-'}</span>
+                            </div>
+                          </>
+                        )}
                       </div>
                     </div>
 
@@ -1083,7 +1032,7 @@ export default function HourlyDataEntry() {
                         <div className="flex items-center space-x-2 mb-2">
                           <Lock className="w-5 h-5 text-green-600" />
                           <span className="font-medium text-green-800 dark:text-green-200">
-                            {t('lockedEntryReadOnly')}
+                            {t('entryLocked')}
                           </span>
                         </div>
                         <div className="text-sm space-y-1">
@@ -1097,7 +1046,7 @@ export default function HourlyDataEntry() {
                           </div>
                         </div>
                         <p className="text-xs text-gray-500 mt-2">
-                          {t('adminOnlyModifyGeneral')}
+                          {t('adminOnlyModify')}
                         </p>
                       </div>
                     ) : selectedEntry && selectedEntry.status === 'locked_admin' ? (
@@ -1127,7 +1076,7 @@ export default function HourlyDataEntry() {
                         <div className="flex items-center space-x-2 mb-2">
                           <CloudOff className="w-5 h-5 text-amber-600" />
                           <span className="font-medium text-amber-800 dark:text-amber-200">
-                            {t('offlineMode')}
+                            Mode hors ligne
                           </span>
                         </div>
                         <div className="text-sm space-y-1">
@@ -1148,7 +1097,6 @@ export default function HourlyDataEntry() {
                       <>
                         {/* Data Entry Fields */}
                         <div className="space-y-4">
-                          {/* Fish Count */}
                           <div>
                             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                               <Fish className="w-4 h-4 inline mr-1" />
@@ -1158,7 +1106,7 @@ export default function HourlyDataEntry() {
                               <Button
                                 variant="outline"
                                 size="sm"
-                                onClick={() => adjustFishCount(-1)}
+                                onClick={() => setFishCount(Math.max(0, parseInt(fishCount) - 1 || 0).toString())}
                                 disabled={parseInt(fishCount) <= 0}
                               >
                                 <Minus className="w-4 h-4" />
@@ -1167,16 +1115,15 @@ export default function HourlyDataEntry() {
                                 id="fishCountInput"
                                 type="number"
                                 min="0"
-                                step="1"
                                 value={fishCount}
                                 onChange={(e) => setFishCount(e.target.value)}
-                                className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-center"
+                                className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-center"
                                 placeholder="0"
                               />
                               <Button
                                 variant="outline"
                                 size="sm"
-                                onClick={() => adjustFishCount(1)}
+                                onClick={() => setFishCount((parseInt(fishCount) + 1 || 1).toString())}
                               >
                                 <Plus className="w-4 h-4" />
                               </Button>
@@ -1186,7 +1133,6 @@ export default function HourlyDataEntry() {
                             )}
                           </div>
 
-                          {/* Total Weight */}
                           <div>
                             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                               <Scale className="w-4 h-4 inline mr-1" />
@@ -1196,7 +1142,7 @@ export default function HourlyDataEntry() {
                               <Button
                                 variant="outline"
                                 size="sm"
-                                onClick={() => adjustTotalWeight(-1)}
+                                onClick={() => setTotalWeight(Math.max(0, parseInt(totalWeight) - 1 || 0).toString())}
                                 disabled={parseInt(totalWeight) <= 0 || parseInt(fishCount) === 0}
                               >
                                 <Minus className="w-4 h-4" />
@@ -1204,17 +1150,16 @@ export default function HourlyDataEntry() {
                               <input
                                 type="number"
                                 min="0"
-                                step="1"
                                 value={totalWeight}
                                 onChange={(e) => setTotalWeight(e.target.value)}
-                                className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-center"
+                                className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-center"
                                 placeholder="0"
                                 disabled={parseInt(fishCount) === 0}
                               />
                               <Button
                                 variant="outline"
                                 size="sm"
-                                onClick={() => adjustTotalWeight(1)}
+                                onClick={() => setTotalWeight((parseInt(totalWeight) + 1 || 1).toString())}
                                 disabled={parseInt(fishCount) === 0}
                               >
                                 <Plus className="w-4 h-4" />
@@ -1223,11 +1168,9 @@ export default function HourlyDataEntry() {
                             {errors.totalWeight && (
                               <p className="text-red-500 text-xs mt-1">{errors.totalWeight}</p>
                             )}
-                            {parseInt(fishCount) === 0 && (
-                              <p className="text-blue-600 text-xs mt-1">
-                                {t('autoWeightNote')}
-                              </p>
-                            )}
+                            <p className="text-xs text-gray-500 mt-1">
+                              {t('autoWeightNote')}
+                            </p>
                           </div>
                         </div>
 
@@ -1235,7 +1178,7 @@ export default function HourlyDataEntry() {
                         <div className="space-y-2">
                           <Button
                             variant="primary"
-                            onClick={handleSave}
+                            onClick={() => handleSaveEntry(false)}
                             className="w-full"
                             disabled={!fishCount.trim() || !totalWeight.trim() || isSaving || isEntryLocked || Object.keys(errors).length > 0}
                           >
@@ -1249,7 +1192,7 @@ export default function HourlyDataEntry() {
                           
                           <Button
                             variant="outline"
-                            onClick={handleSaveAndNext}
+                            onClick={() => handleSaveEntry(true)}
                             className="w-full"
                             disabled={!fishCount.trim() || !totalWeight.trim() || isSaving || isEntryLocked || !hasIncompleteCompetitors || Object.keys(errors).length > 0}
                           >
