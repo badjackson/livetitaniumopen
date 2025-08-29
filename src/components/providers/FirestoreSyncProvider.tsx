@@ -22,6 +22,12 @@ export default function FirestoreSyncProvider({ children }: { children: ReactNod
         const hourly: any = {};
         for (const r of rows) {
           const sector = r.sector; const hour = r.hour; const cId = r.competitorId;
+        }
+      }
+      )
+    }
+  }
+  )
   // Firebase sync temporarily disabled until security rules are configured
   // To enable: Apply the rules from FIREBASE_SECURITY_RULES.md to your Firebase Console
   // Then uncomment the useEffect code below
