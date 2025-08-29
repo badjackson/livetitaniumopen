@@ -1016,7 +1016,7 @@ export default function AdminPrises() {
                             min="0"
                             value={fishCount}
                             onChange={(e) => setFishCount(e.target.value)}
-                            className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-center"
+                            className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-center"
                             placeholder="0"
                           />
                           <Button
@@ -1051,7 +1051,7 @@ export default function AdminPrises() {
                             min="0"
                             value={totalWeight}
                             onChange={(e) => setTotalWeight(e.target.value)}
-                            className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-center"
+                            className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-center"
                             placeholder="0"
                             disabled={parseInt(fishCount) === 0}
                           />
