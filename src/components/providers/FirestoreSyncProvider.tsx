@@ -1,6 +1,6 @@
 'use client';
 
-import { ReactNode } from 'react';
+import { ReactNode, useEffect, useState } from 'react';
 // import { subscribeHourlyAll, subscribeBigCatchAll } from '@/lib/firestore-entries';
 
 function writeAndDispatch(key: string, value: any) {
@@ -13,21 +13,6 @@ function writeAndDispatch(key: string, value: any) {
 export default function FirestoreSyncProvider({ children }: { children: ReactNode }) {
   const [firebaseError, setFirebaseError] = useState<string | null>(null);
 
-  useEffect(() => {
-    let unHourly: (() => void) | null = null;
-    let unBig: (() => void) | null = null;
-
-    try {
-      unHourly = subscribeHourlyAll((rows) => {
-        const hourly: any = {};
-        for (const r of rows) {
-          const sector = r.sector; const hour = r.hour; const cId = r.competitorId;
-        }
-      }
-      )
-    }
-  }
-  )
   // Firebase sync temporarily disabled until security rules are configured
   // To enable: Apply the rules from FIREBASE_SECURITY_RULES.md to your Firebase Console
   // Then uncomment the useEffect code below
