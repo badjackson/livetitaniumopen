@@ -1,7 +1,19 @@
 {
-  "/page": "app/page.js",
+  "/_not-found/page": "app/_not-found/page.js",
   "/login/page": "app/login/page.js",
+  "/page": "app/page.js",
+  "/admin/apparence-publique/page": "app/admin/apparence-publique/page.js",
+  "/admin/calculs-live/page": "app/admin/calculs-live/page.js",
+  "/admin/classement-general/page": "app/admin/classement-general/page.js",
+  "/admin/competiteurs/page": "app/admin/competiteurs/page.js",
   "/admin/grosse-prise/page": "app/admin/grosse-prise/page.js",
+  "/admin/juges/page": "app/admin/juges/page.js",
+  "/admin/page": "app/admin/page.js",
   "/admin/prises/page": "app/admin/prises/page.js",
-  "/admin/page": "app/admin/page.js"
+  "/admin/settings/page": "app/admin/settings/page.js",
+  "/admin/users/page": "app/admin/users/page.js",
+  "/judge/catches/page": "app/judge/catches/page.js",
+  "/judge/page": "app/judge/page.js",
+  "/judge/grosse-prise/page": "app/judge/grosse-prise/page.js",
+  "/judge/prises/page": "app/judge/prises/page.js"
 }
