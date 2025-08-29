@@ -4,13 +4,13 @@ import { getAuth } from 'firebase/auth';
 import { getStorage } from 'firebase/storage';
 
 const firebaseConfig = {
-  apiKey: "AIzaSyAb72OZaFpAZPTcnyYbXE4uYAP03s3QHI0",
-  authDomain: "titanium-f7b50.firebaseapp.com",
-  projectId: "titanium-f7b50",
-  storageBucket: "titanium-f7b50.firebasestorage.app",
-  messagingSenderId: "30259124231",
-  appId: "1:30259124231:web:ebaad04109b0400f9af2a2",
-  measurementId: "G-2HN2C21SLD"
+  apiKey: process.env.NEXT_PUBLIC_FB_API_KEY,
+  authDomain: process.env.NEXT_PUBLIC_FB_AUTH_DOMAIN,
+  projectId: process.env.NEXT_PUBLIC_FB_PROJECT_ID,
+  storageBucket: process.env.NEXT_PUBLIC_FB_STORAGE_BUCKET,
+  messagingSenderId: process.env.NEXT_PUBLIC_FB_MSG_SENDER_ID,
+  appId: process.env.NEXT_PUBLIC_FB_APP_ID,
+  measurementId: process.env.NEXT_PUBLIC_FB_MEASUREMENT_ID
 };
 
 // Initialize Firebase
