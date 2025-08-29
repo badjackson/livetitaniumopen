@@ -13,6 +13,12 @@ function writeAndDispatch(key: string, value: any) {
 export default function FirestoreSyncProvider({ children }: { children: ReactNode }) {
   const [firebaseError, setFirebaseError] = useState<string | null>(null);
 
+  // Show error notification if Firebase is not accessible
+  useEffect(() => {
+    if (firebaseError) {
+      console.warn('Firebase Sync Provider:', firebaseError);
+    }
+  }, [firebaseError]);
 
 
   useEffect(() => {
@@ -52,12 +58,6 @@ export default function FirestoreSyncProvider({ children }: { children: ReactNod
         }
         writeAndDispatch('grossePriseData', big);
       });
-  // Show error notification if Firebase is not accessible
-  useEffect(() => {
-    if (firebaseError) {
-      console.warn('Firebase Sync Provider:', firebaseError);
-    }
-  }, [firebaseError]);
 
       return () => { 
         try {
@@ -73,5 +73,6 @@ export default function FirestoreSyncProvider({ children }: { children: ReactNod
       return () => {}; // Return empty cleanup function
     }
   }, []);
+
   return <>{children}</>;
 }
