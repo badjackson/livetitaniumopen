@@ -24,6 +24,7 @@ import {
   Download
 } from 'lucide-react';
 import { formatWeight, formatNumber, formatTime } from '@/lib/utils';
+import { upsertBigCatch } from '@/lib/firestore-entries';
 
 interface Competitor {
   id: string;
@@ -504,6 +505,22 @@ export default function AdminGrossePrise() {
 
     // Update localStorage
     updateLocalStorage(activeSector, selectedCompetitor.id, entry);
+
+    // Save to Firebase
+    try {
+      await upsertBigCatch({
+        sector: activeSector,
+        competitorId: selectedCompetitor.id,
+        boxNumber: selectedCompetitor.boxNumber,
+        biggestCatch: parseInt(biggestCatch),
+        status: isOnlineSimulation ? 'locked_admin' : 'offline_admin',
+        source: 'Admin',
+        updatedBy: 'admin',
+      });
+      console.log('Big catch data saved to Firebase successfully');
+    } catch (error) {
+      console.error('Error saving big catch to Firebase:', error instanceof Error ? error.message : error);
+    }
 
     // Simulate save delay
     setTimeout(() => {

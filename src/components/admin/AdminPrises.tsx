@@ -32,6 +32,7 @@ import {
   Download
 } from 'lucide-react';
 import { formatWeight, formatNumber, formatTime } from '@/lib/utils';
+import { upsertHourlyEntry } from '@/lib/firestore-entries';
 
 interface Competitor {
   id: string;
@@ -602,6 +603,24 @@ export default function AdminPrises() {
 
     // Update localStorage
     updateLocalStorage(activeSector, currentHour, selectedCompetitor.id, entry);
+
+    // Save to Firebase
+    try {
+      await upsertHourlyEntry({
+        sector: activeSector,
+        hour: currentHour,
+        competitorId: selectedCompetitor.id,
+        boxNumber: selectedCompetitor.boxNumber,
+        fishCount: parseInt(fishCount),
+        totalWeight: parseInt(totalWeight),
+        status: isOnlineSimulation ? 'locked_admin' : 'offline_admin',
+        source: 'Admin',
+        updatedBy: 'admin',
+      });
+      console.log('Data saved to Firebase successfully');
+    } catch (error) {
+      console.error('Error saving to Firebase:', error instanceof Error ? error.message : error);
+    }
 
     // Simulate save
     setTimeout(() => {
