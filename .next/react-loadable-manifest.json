@@ -1,8 +1,14 @@
 {
+  "components/admin/AdminDashboard.tsx -> @/components/ui/CountdownOverlay": {
+    "id": "components/admin/AdminDashboard.tsx -> @/components/ui/CountdownOverlay",
+    "files": [
+      "static/chunks/_app-pages-browser_src_components_ui_CountdownOverlay_tsx-_aa190.js"
+    ]
+  },
   "components/judge/JudgeDashboard.tsx -> @/components/ui/CountdownOverlay": {
     "id": "components/judge/JudgeDashboard.tsx -> @/components/ui/CountdownOverlay",
     "files": [
-      "static/chunks/_app-pages-browser_src_components_ui_CountdownOverlay_tsx.js"
+      "static/chunks/_app-pages-browser_src_components_ui_CountdownOverlay_tsx-_aa191.js"
     ]
   },
   "components/layout/Header.tsx -> @/components/ui/CompetitionCountdown": {
