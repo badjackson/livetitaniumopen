@@ -33,6 +33,7 @@ import {
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { formatWeight, formatNumber, formatTime } from '@/lib/utils';
+import { upsertHourlyEntry } from '@/lib/firestore-entries';
 
 interface Competitor {
   id: string;
@@ -617,6 +618,23 @@ export default function HourlyDataEntry() {
 
     updateLocalStorage(currentHour, selectedCompetitor.id, entry);
 
+    // Save to Firebase
+    try {
+      await upsertHourlyEntry({
+        sector: judgeSector,
+        hour: currentHour,
+        competitorId: selectedCompetitor.id,
+        boxNumber: selectedCompetitor.boxNumber,
+        fishCount: parseInt(fishCount),
+        totalWeight: parseInt(totalWeight),
+        status: isOnlineSimulation ? 'locked_judge' : 'offline_judge',
+        source: 'Judge',
+        updatedBy: currentUser?.username || 'judge',
+      });
+    } catch (error) {
+      console.error('Error saving to Firebase:', error);
+    }
+
     setTimeout(() => {
       setIsSaving(false);
       
@@ -1019,7 +1037,7 @@ export default function HourlyDataEntry() {
                             </div>
                             <div className="flex items-center justify-between">
                               <span className="text-sm text-gray-600 dark:text-gray-400">Dernière MAJ:</span>
-                              <span className="text-sm">{selectedEntry.timestamp ? formatTime(selectedEntry.timestamp) : '-'}</span>
+                              <span className="text-sm text-gray-900 dark:text-gray-100">{selectedEntry.timestamp ? formatTime(selectedEntry.timestamp) : '-'}</span>
                             </div>
                           </>
                         )}

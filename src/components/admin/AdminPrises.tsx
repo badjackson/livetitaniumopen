@@ -988,7 +988,7 @@ export default function AdminPrises() {
                             </div>
                             <div className="flex items-center justify-between">
                               <span className="text-sm text-gray-600 dark:text-gray-400">Dernière MAJ:</span>
-                              <span className="text-sm">{selectedEntry.timestamp ? formatTime(selectedEntry.timestamp) : '-'}</span>
+                              <span className="text-sm text-gray-900 dark:text-gray-100">{selectedEntry.timestamp ? formatTime(selectedEntry.timestamp) : '-'}</span>
                             </div>
                           </>
                         )}

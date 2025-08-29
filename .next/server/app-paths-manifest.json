@@ -1,10 +1,7 @@
 {
-  "/_not-found/page": "app/_not-found/page.js",
   "/page": "app/page.js",
   "/login/page": "app/login/page.js",
   "/admin/prises/page": "app/admin/prises/page.js",
-  "/judge/page": "app/judge/page.js",
-  "/admin/page": "app/admin/page.js",
   "/judge/prises/page": "app/judge/prises/page.js",
   "/judge/grosse-prise/page": "app/judge/grosse-prise/page.js"
 }
