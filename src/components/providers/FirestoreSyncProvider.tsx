@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, ReactNode, useState } from 'react';
-import { subscribeHourlyAll, subscribeBigCatchAll } from '@/lib/firestore-entries';
+import { ReactNode } from 'react';
+// import { subscribeHourlyAll, subscribeBigCatchAll } from '@/lib/firestore-entries';
 
 function writeAndDispatch(key: string, value: any) {
   if (typeof window === 'undefined') return;
@@ -22,54 +22,56 @@ export default function FirestoreSyncProvider({ children }: { children: ReactNod
         const hourly: any = {};
         for (const r of rows) {
           const sector = r.sector; const hour = r.hour; const cId = r.competitorId;
-          hourly[sector] ??= {};
-          hourly[sector][hour] ??= {};
-          hourly[sector][hour][cId] = {
-            competitorId: cId,
-            boxNumber: r.boxNumber,
-            fishCount: r.fishCount,
-            totalWeight: r.totalWeight,
-            status: r.status,
-            source: r.source,
-            timestamp: r.timestamp?.toDate ? r.timestamp.toDate() : r.timestamp,
-          };
-        }
-        writeAndDispatch('hourlyData', hourly);
-        setFirebaseError(null); // Clear error on successful connection
-      });
-    } catch (error: any) {
-      console.warn('Failed to subscribe to hourly entries:', error.message);
-      setFirebaseError('Firebase connection failed. Using offline mode.');
-    }
+  // Firebase sync temporarily disabled until security rules are configured
+  // To enable: Apply the rules from FIREBASE_SECURITY_RULES.md to your Firebase Console
+  // Then uncomment the useEffect code below
+  
+  // useEffect(() => {
+  //   const unHourly = subscribeHourlyAll((rows) => {
+  //     const hourly: any = {};
+  //     for (const r of rows) {
+  //       const sector = r.sector; const hour = r.hour; const cId = r.competitorId;
+  //       hourly[sector] ??= {};
+  //       hourly[sector][hour] ??= {};
+  //       hourly[sector][hour][cId] = {
+  //         competitorId: cId,
+  //         boxNumber: r.boxNumber,
+  //         fishCount: r.fishCount,
+  //         totalWeight: r.totalWeight,
+  //         status: r.status,
+  //         source: r.source,
+  //         timestamp: r.timestamp?.toDate ? r.timestamp.toDate() : r.timestamp,
+  //       };
+  //     }
+  //     writeAndDispatch('hourlyData', hourly);
+  //   });
 
-    try {
-      unBig = subscribeBigCatchAll((rows) => {
-        const big: any = {};
-        for (const r of rows) {
-          const sector = r.sector; const cId = r.competitorId;
-          big[sector] ??= {};
-          big[sector][cId] = {
-            competitorId: cId,
-            boxNumber: r.boxNumber,
-            biggestCatch: r.biggestCatch,
-            status: r.status,
-            source: r.source,
-            timestamp: r.timestamp?.toDate ? r.timestamp.toDate() : r.timestamp,
-          };
-        }
-        writeAndDispatch('grossePriseData', big);
-        setFirebaseError(null); // Clear error on successful connection
-      });
-    } catch (error: any) {
-      console.warn('Failed to subscribe to big catches:', error.message);
-      setFirebaseError('Firebase connection failed. Using offline mode.');
-    }
+  //   const unBig = subscribeBigCatchAll((rows) => {
+  //     const big: any = {};
+  //     for (const r of rows) {
+  //       const sector = r.sector; const cId = r.competitorId;
+  //       big[sector] ??= {};
+  //       big[sector][cId] = {
+  //         competitorId: cId,
+  //         boxNumber: r.boxNumber,
+  //         biggestCatch: r.biggestCatch,
+  //         status: r.status,
+  //         source: r.source,
+  //         timestamp: r.timestamp?.toDate ? r.timestamp.toDate() : r.timestamp,
+  //       };
+  //     }
+  //     writeAndDispatch('grossePriseData', big);
+  //   });
 
-    return () => { 
-      if (unHourly) unHourly(); 
-      if (unBig) unBig(); 
-    };
-  }, []);
+  //   return () => { 
+  //     try {
+  //       if (unHourly) unHourly();
+  //       if (unBig) unBig();
+  //     } catch (error) {
+  //       console.warn('Error during Firebase cleanup:', error);
+  //     }
+  //   };
+  // }, []);
 
   // Show error notification if Firebase is not accessible
   useEffect(() => {
