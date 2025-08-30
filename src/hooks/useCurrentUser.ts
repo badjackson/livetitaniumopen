@@ -1,10 +1,13 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { onAuthStateChanged } from 'firebase/auth';
+import { auth } from '@/lib/firebase';
 import { logoutFromFirebase } from '@/lib/auth';
+import { JudgeService } from '@/lib/firestore-services';
 
-interface UserSession {
-  id: number;
+export interface UserSession {
+  id: string;
   name: string;
   username: string;
   role: 'admin' | 'judge';
@@ -17,36 +20,50 @@ export function useCurrentUser() {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const loadCurrentUser = () => {
-      if (typeof window !== 'undefined') {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (user) {
         try {
-          // Try localStorage first
-          const sessionData = localStorage.getItem('currentUserSession');
-          if (sessionData) {
-            const user = JSON.parse(sessionData);
-            setCurrentUser(user);
+          // Get judge data from Firestore
+          const judgeData = await JudgeService.getJudgeByUid(user.uid);
+          
+          if (judgeData && judgeData.status === 'active') {
+            const userSession: UserSession = {
+              id: user.uid,
+              name: judgeData.name,
+              username: judgeData.username,
+              role: judgeData.role,
+              sector: judgeData.sector,
+              loginTime: new Date().toISOString()
+            };
+            setCurrentUser(userSession);
           } else {
-            // Try sessionStorage as backup
-            const sessionBackup = sessionStorage.getItem('currentUserSessionBackup');
-            if (sessionBackup) {
-              const user = JSON.parse(sessionBackup);
-              setCurrentUser(user);
-              // Restore to localStorage
-              localStorage.setItem('currentUserSession', sessionBackup);
-            }
+            // Fallback for admin or if judge doc doesn't exist
+            const userSession: UserSession = {
+              id: user.uid,
+              name: user.displayName || user.email?.split('@')[0] || 'Unknown',
+              username: user.email?.split('@')[0] || 'unknown',
+              role: user.email === 'admin@titaniumopen.com' ? 'admin' : 'judge',
+              sector: user.email === 'admin@titaniumopen.com' ? null : 'A',
+              loginTime: new Date().toISOString()
+            };
+            setCurrentUser(userSession);
           }
         } catch (error) {
-          console.error('Error loading current user session:', error);
+          console.error('Error loading user data:', error);
+          setCurrentUser(null);
         }
+      } else {
+        setCurrentUser(null);
       }
       setIsLoading(false);
-    };
+    });
 
-    loadCurrentUser();
+    return unsubscribe;
+  }, []);
 
-    // Listen for session changes
+  useEffect(() => {
     const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === 'currentUserSession') {
+      if (e.key === 'userSession') {
         if (e.newValue) {
           try {
             const user = JSON.parse(e.newValue);
@@ -64,9 +81,13 @@ export function useCurrentUser() {
     return () => window.removeEventListener('storage', handleStorageChange);
   }, []);
 
-  const logout = () => {
-    logoutFromFirebase();
-    setCurrentUser(null);
+  const logout = async () => {
+    try {
+      await logoutFromFirebase();
+      setCurrentUser(null);
+    } catch (error) {
+      console.error('Logout error:', error);
+    }
   };
 
   return {

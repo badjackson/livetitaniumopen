@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useFirestore } from '@/components/providers/FirestoreSyncProvider';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import { 
@@ -17,31 +18,11 @@ import {
   Smartphone,
   Tablet
 } from 'lucide-react';
-
-interface PublicAppearanceSettings {
-  logos: {
-    light: string;
-    dark: string;
-  };
-  sponsors: Array<{
-    id: string;
-    name: string;
-    logo: string;
-    tier: 'title' | 'gold' | 'silver' | 'bronze';
-  }>;
-  socialLinks: {
-    youtube: string;
-    facebook: string;
-    instagram: string;
-    website: string;
-  };
-  footerText: string;
-  streamDescription: string;
-  streamUrl: string;
-}
+import { type PublicAppearanceSettingsDoc } from '@/lib/firestore-services';
 
 export default function AdminApparencePublique() {
-  const [settings, setSettings] = useState<PublicAppearanceSettings>({
+  const { publicAppearanceSettings, savePublicAppearanceSettings } = useFirestore();
+  const [settings, setSettings] = useState({
     logos: {
       light: '',
       dark: ''
@@ -71,7 +52,12 @@ export default function AdminApparencePublique() {
         logo: '',
         tier: 'bronze'
       }
-    ],
+    ] as Array<{
+      id: string;
+      name: string;
+      logo: string;
+      tier: 'title' | 'gold' | 'silver' | 'bronze';
+    }>,
     socialLinks: {
       youtube: '',
       facebook: '',
@@ -87,51 +73,52 @@ export default function AdminApparencePublique() {
   const [previewMode, setPreviewMode] = useState<'desktop' | 'tablet' | 'mobile'>('desktop');
   const [isLoading, setIsLoading] = useState(false);
 
-  // Load settings from localStorage
+  // Load settings from Firestore
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const savedSettings = localStorage.getItem('publicAppearanceSettings');
-        if (savedSettings) {
-          const parsed = JSON.parse(savedSettings);
-          setSettings(parsed);
-        }
-      } catch (error) {
-        console.error('Error loading appearance settings:', error);
-      }
+    if (publicAppearanceSettings) {
+      setSettings({
+        logos: publicAppearanceSettings.logos,
+        sponsors: publicAppearanceSettings.sponsors,
+        socialLinks: publicAppearanceSettings.socialLinks,
+        footerText: publicAppearanceSettings.footerText,
+        streamDescription: publicAppearanceSettings.streamDescription,
+        streamUrl: publicAppearanceSettings.streamUrl
+      });
     }
-  }, []);
+  }, [publicAppearanceSettings]);
 
   const handleSave = () => {
     setIsSaving(true);
     
-    // Save to localStorage
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('publicAppearanceSettings', JSON.stringify(settings));
-      
-      // Trigger storage event for live updates
-      window.dispatchEvent(new StorageEvent('storage', {
-        key: 'publicAppearanceSettings',
-        newValue: JSON.stringify(settings)
-      }));
-    }
+    const settingsData: Omit<PublicAppearanceSettingsDoc, 'updatedAt'> = {
+      id: 'main',
+      ...settings
+    };
     
-    setTimeout(() => {
+    try {
+      savePublicAppearanceSettings(settingsData);
+      setTimeout(() => {
+        setIsSaving(false);
+        alert('Paramètres d\'apparence sauvegardés avec succès !');
+      }, 800);
+    } catch (error) {
+      console.error('Error saving appearance settings:', error);
       setIsSaving(false);
-      alert('Paramètres d\'apparence sauvegardés avec succès !');
-    }, 800);
+      alert('Erreur lors de la sauvegarde des paramètres');
+    }
   };
 
-  // Helper function to save to storage
-  const saveToStorage = (updatedSettings: PublicAppearanceSettings) => {
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('publicAppearanceSettings', JSON.stringify(updatedSettings));
-      
-      // Trigger storage event for live updates
-      window.dispatchEvent(new StorageEvent('storage', {
-        key: 'publicAppearanceSettings',
-        newValue: JSON.stringify(updatedSettings)
-      }));
+  // Helper function to save to Firestore
+  const saveToFirestore = async (updatedSettings: typeof settings) => {
+    const settingsData: Omit<PublicAppearanceSettingsDoc, 'updatedAt'> = {
+      id: 'main',
+      ...updatedSettings
+    };
+    
+    try {
+      await savePublicAppearanceSettings(settingsData);
+    } catch (error) {
+      console.error('Error saving to Firestore:', error);
     }
   };
 
@@ -156,7 +143,7 @@ export default function AdminApparencePublique() {
         };
         
         setSettings(newSettings);
-        saveToStorage(newSettings);
+        saveToFirestore(newSettings);
       };
       reader.onerror = () => {
         alert('Erreur lors de la lecture du fichier. Veuillez réessayer.');
@@ -189,7 +176,7 @@ export default function AdminApparencePublique() {
         setSettings(updatedSettings);
         
         // Force immediate save for sponsor logo uploads
-        saveToStorage(updatedSettings);
+        saveToFirestore(updatedSettings);
       };
       reader.readAsDataURL(file);
     }
@@ -206,49 +193,8 @@ export default function AdminApparencePublique() {
     };
     
     setSettings(updatedSettings);
-    saveToStorage(updatedSettings);
+    saveToFirestore(updatedSettings);
   };
-
-  // Add function to restore from backup
-  const restoreFromBackup = () => {
-    if (typeof window !== 'undefined') {
-      try {
-        const backupSettings = sessionStorage.getItem('publicAppearanceSettings');
-        if (backupSettings) {
-          const parsed = JSON.parse(backupSettings);
-          setSettings(parsed);
-          saveToStorage(parsed);
-          alert('Paramètres restaurés depuis la sauvegarde !');
-        } else {
-          alert('Aucune sauvegarde trouvée.');
-        }
-      } catch (error) {
-        console.error('Error restoring backup:', error);
-        alert('Erreur lors de la restauration.');
-      }
-    }
-  };
-
-  // Check storage quota and clean if needed
-  const checkStorageQuota = () => {
-    if (typeof window !== 'undefined' && 'storage' in navigator && 'estimate' in navigator.storage) {
-      navigator.storage.estimate().then(estimate => {
-        const usedMB = (estimate.usage || 0) / (1024 * 1024);
-        const quotaMB = (estimate.quota || 0) / (1024 * 1024);
-        
-        console.log(`Storage used: ${usedMB.toFixed(2)}MB / ${quotaMB.toFixed(2)}MB`);
-        
-        if (usedMB > quotaMB * 0.8) {
-          console.warn('Storage quota nearly exceeded');
-        }
-      });
-    }
-  };
-
-  // Check storage on mount
-  useEffect(() => {
-    checkStorageQuota();
-  }, []);
 
   const addSponsor = () => {
     const newSponsor = {
@@ -262,7 +208,7 @@ export default function AdminApparencePublique() {
       sponsors: [...settings.sponsors, newSponsor]
     };
     setSettings(updatedSettings);
-    saveToStorage(updatedSettings);
+    saveToFirestore(updatedSettings);
   };
 
   const removeSponsor = (sponsorId: string) => {
@@ -271,7 +217,7 @@ export default function AdminApparencePublique() {
       sponsors: settings.sponsors.filter(s => s.id !== sponsorId)
     };
     setSettings(updatedSettings);
-    saveToStorage(updatedSettings);
+    saveToFirestore(updatedSettings);
   };
 
   const updateSponsor = (sponsorId: string, field: string, value: string) => {
@@ -287,8 +233,12 @@ export default function AdminApparencePublique() {
     
     // Auto-save sponsor updates with debounce
     setTimeout(() => {
-      saveToStorage(updatedSettings);
+      saveToFirestore(updatedSettings);
     }, 1000);
+  };
+
+  const restoreFromBackup = () => {
+    // Placeholder function
   };
 
   return (
@@ -324,7 +274,7 @@ export default function AdminApparencePublique() {
             </Button>
           </div>
           <Button variant="outline" size="sm" onClick={restoreFromBackup}>
-            Restaurer sauvegarde
+            Restaurer
           </Button>
           <Button variant="primary" onClick={handleSave} disabled={isSaving}>
             {isSaving ? (
@@ -332,7 +282,7 @@ export default function AdminApparencePublique() {
             ) : (
               <Save className="w-4 h-4 mr-2" />
             )}
-            Sauvegarder manuellement
+            Sauvegarder
           </Button>
         </div>
       </div>
