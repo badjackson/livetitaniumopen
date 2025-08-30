@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useFirestore } from '@/components/providers/FirestoreSyncProvider';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import Button from '@/components/ui/Button';
@@ -60,82 +61,8 @@ interface CalculatedCompetitor {
   lastValidEntry?: Date;
 }
 
-// Get competitors from localStorage
-const getAllCompetitors = (): Competitor[] => {
-  if (typeof window !== 'undefined') {
-    try {
-      const savedCompetitors = localStorage.getItem('competitors');
-      if (savedCompetitors) {
-        const allCompetitors = JSON.parse(savedCompetitors);
-        return allCompetitors.map((comp: any) => ({
-          id: comp.id,
-          boxNumber: comp.boxNumber,
-          boxCode: comp.boxCode,
-          name: comp.fullName,
-          equipe: comp.equipe,
-          sector: comp.sector,
-        }));
-      }
-    } catch (error) {
-      console.error('Error loading competitors:', error);
-    }
-  }
-  return [];
-};
-
-// Get hourly data from localStorage
-const getHourlyData = () => {
-  if (typeof window !== 'undefined') {
-    try {
-      const savedData = localStorage.getItem('hourlyData');
-      if (savedData) {
-        const allHourlyData = JSON.parse(savedData);
-        // Convert timestamp strings back to Date objects
-        Object.keys(allHourlyData).forEach(sector => {
-          Object.keys(allHourlyData[sector] || {}).forEach(hour => {
-            Object.keys(allHourlyData[sector][hour] || {}).forEach(competitorId => {
-              const entry = allHourlyData[sector][hour][competitorId];
-              if (entry.timestamp) {
-                entry.timestamp = new Date(entry.timestamp);
-              }
-            });
-          });
-        });
-        return allHourlyData;
-      }
-    } catch (error) {
-      console.error('Error loading hourly data:', error);
-    }
-  }
-  return {};
-};
-
-// Get grosse prise data from localStorage
-const getGrossePriseData = () => {
-  if (typeof window !== 'undefined') {
-    try {
-      const savedData = localStorage.getItem('grossePriseData');
-      if (savedData) {
-        const allGrossePriseData = JSON.parse(savedData);
-        // Convert timestamp strings back to Date objects
-        Object.keys(allGrossePriseData).forEach(sector => {
-          Object.keys(allGrossePriseData[sector] || {}).forEach(competitorId => {
-            const entry = allGrossePriseData[sector][competitorId];
-            if (entry.timestamp) {
-              entry.timestamp = new Date(entry.timestamp);
-            }
-          });
-        });
-        return allGrossePriseData;
-      }
-    } catch (error) {
-      console.error('Error loading grosse prise data:', error);
-    }
-  }
-  return {};
-};
-
 export default function LiveGeneralRanking() {
+  const { competitors, hourlyEntries, bigCatches, auditLog } = useFirestore();
   const [searchQuery, setSearchQuery] = useState('');
   const [sectorFilter, setSectorFilter] = useState<string>('all');
   const [sortField, setSortField] = useState<string>('classementGeneral');
@@ -146,271 +73,41 @@ export default function LiveGeneralRanking() {
   const [allCompetitors, setAllCompetitors] = useState<Competitor[]>([]);
   const [hourlyData, setHourlyData] = useState<any>({});
   const [grossePriseData, setGrossePriseData] = useState<any>({});
-  const [logoSettings, setLogoSettings] = useState({ light: '', dark: '' });
 
   const sectors = ['A', 'B', 'C', 'D', 'E', 'F'];
 
-  // Load initial data
-  useEffect(() => {
-    const loadData = () => {
-      setAllCompetitors(getAllCompetitors());
-      setHourlyData(getHourlyData());
-      setGrossePriseData(getGrossePriseData());
-    };
+  // Convert Firebase data to local format for calculations
+  const hourlyDataByCompetitor = useMemo(() => {
+    const data: { [competitorId: string]: { [hour: number]: any } } = {};
     
-    loadData();
-
-    // Always ensure we have competitors data
-    if (typeof window !== 'undefined') {
-      const existingCompetitors = localStorage.getItem('competitors');
-      
-      // If no competitors exist, create them first
-      if (!existingCompetitors) {
-        const officialCompetitors = [
-          // Sector A
-          { sector: 'A', boxNumber: 1, fullName: 'Sami Said', equipe: 'OPEN' },
-          { sector: 'A', boxNumber: 2, fullName: 'Ramzi Dhahak', equipe: 'TST' },
-          { sector: 'A', boxNumber: 3, fullName: 'Nour Abdennadher', equipe: 'AS MARSA' },
-          { sector: 'A', boxNumber: 4, fullName: 'Zied Ferjani', equipe: 'OPEN' },
-          { sector: 'A', boxNumber: 5, fullName: 'Slim Baklouti', equipe: 'CPSS' },
-          { sector: 'A', boxNumber: 6, fullName: 'Mohamed Nour Zribi', equipe: 'PLANET' },
-          { sector: 'A', boxNumber: 7, fullName: 'Yassine Bellil', equipe: 'TST' },
-          { sector: 'A', boxNumber: 8, fullName: 'Foued Baccouche', equipe: 'OPEN' },
-          { sector: 'A', boxNumber: 9, fullName: 'Fredj Gharbi', equipe: 'ETOILE BLEUE SOUSSE' },
-          { sector: 'A', boxNumber: 10, fullName: 'Mohamed Maarfi', equipe: 'PIRANHA' },
-          { sector: 'A', boxNumber: 11, fullName: 'Aymen Ben Hmida', equipe: 'CPS NABEUL' },
-          { sector: 'A', boxNumber: 12, fullName: 'Riadh Ajmi', equipe: 'TST' },
-          { sector: 'A', boxNumber: 13, fullName: 'Sidali Guir', equipe: 'ECOSIUM' },
-          { sector: 'A', boxNumber: 14, fullName: 'Kais Masmoudi', equipe: 'OPEN' },
-          { sector: 'A', boxNumber: 15, fullName: 'Mohamed Taieb Korbi', equipe: 'TST' },
-          { sector: 'A', boxNumber: 16, fullName: 'Elyes Benzarti', equipe: 'PLANET' },
-          { sector: 'A', boxNumber: 17, fullName: 'Zied Kefi', equipe: 'PIRANHA' },
-          { sector: 'A', boxNumber: 18, fullName: 'Hamdi Naili', equipe: 'OPEN' },
-          { sector: 'A', boxNumber: 19, fullName: 'Heni Kolsi', equipe: 'TEAM MAJD' },
-          { sector: 'A', boxNumber: 20, fullName: 'Yacine Kidar', equipe: 'PLANET DZ' },
-          
-          // Sector B
-          { sector: 'B', boxNumber: 1, fullName: 'Akram Ben Abdallah', equipe: 'AS MARSA' },
-          { sector: 'B', boxNumber: 2, fullName: 'Ramzi Soukah', equipe: 'CPS NABEUL' },
-          { sector: 'B', boxNumber: 3, fullName: 'Wajdi Lajmi', equipe: 'PIRANHA' },
-          { sector: 'B', boxNumber: 4, fullName: 'Saief Loudhaief', equipe: 'TST' },
-          { sector: 'B', boxNumber: 5, fullName: 'Hammadi Fakhfekh', equipe: 'CPSS' },
-          { sector: 'B', boxNumber: 6, fullName: 'Ilyes Bessiuod', equipe: 'OPEN' },
-          { sector: 'B', boxNumber: 7, fullName: 'Med Wajdi Cherif', equipe: 'PLANET' },
-          { sector: 'B', boxNumber: 8, fullName: 'Walid Safraoui', equipe: 'TST' },
-          { sector: 'B', boxNumber: 9, fullName: 'Bilal Sefsaf', equipe: 'OPEN' },
-          { sector: 'B', boxNumber: 10, fullName: 'Abdelmonem Elgliou', equipe: 'PIRANHA' },
-          { sector: 'B', boxNumber: 11, fullName: 'Hamza Krifi', equipe: 'TPL' },
-          { sector: 'B', boxNumber: 12, fullName: 'Kamel Bahloul', equipe: 'ORCA' },
-          { sector: 'B', boxNumber: 13, fullName: 'Ridha Wahid', equipe: 'OPEN' },
-          { sector: 'B', boxNumber: 14, fullName: 'Amen Souayha', equipe: 'PLANET' },
-          { sector: 'B', boxNumber: 15, fullName: 'Fatma Ktifi', equipe: 'TST' },
-          { sector: 'B', boxNumber: 16, fullName: 'Nizar Mbarek', equipe: 'ETOILE BLEUE SOUSSE' },
-          { sector: 'B', boxNumber: 17, fullName: 'Mohamed Anouer Belhessin Bay', equipe: 'PIRANHA' },
-          { sector: 'B', boxNumber: 18, fullName: 'Ali Ouesleti', equipe: 'TPL' },
-          { sector: 'B', boxNumber: 19, fullName: 'Walid Ben Jrad', equipe: 'TST' },
-          { sector: 'B', boxNumber: 20, fullName: 'Mohamed Saber Haouari', equipe: 'PIRANHA' },
-          
-          // Sector C
-          { sector: 'C', boxNumber: 1, fullName: 'Bassem Mezelini', equipe: 'PIRANHA' },
-          { sector: 'C', boxNumber: 2, fullName: 'Rami Jomni', equipe: 'TST' },
-          { sector: 'C', boxNumber: 3, fullName: 'Hassen Ben Amor', equipe: 'OPEN' },
-          { sector: 'C', boxNumber: 4, fullName: 'Bilel Ennouri', equipe: 'TPL' },
-          { sector: 'C', boxNumber: 5, fullName: 'Ramzi Ben Amor', equipe: 'OPEN' },
-          { sector: 'C', boxNumber: 6, fullName: 'Youssef Ben Hamed', equipe: 'PLANET' },
-          { sector: 'C', boxNumber: 7, fullName: 'Redouane Mechkour', equipe: 'MINA FISHING DZ' },
-          { sector: 'C', boxNumber: 8, fullName: 'Chiheb Bayar', equipe: 'TST' },
-          { sector: 'C', boxNumber: 9, fullName: 'Zied Zarrouk', equipe: 'PIRANHA' },
-          { sector: 'C', boxNumber: 10, fullName: 'Yassine Mannai', equipe: 'AS MARSA' },
-          { sector: 'C', boxNumber: 11, fullName: 'Abdelkader Sami Khalfi', equipe: 'TSC DZ' },
-          { sector: 'C', boxNumber: 12, fullName: 'Bechir Ben Aoun', equipe: 'TST' },
-          { sector: 'C', boxNumber: 13, fullName: 'Faouzi Berkane', equipe: 'SÉTIFIEN DZ' },
-          { sector: 'C', boxNumber: 14, fullName: 'Rami Gdich', equipe: 'CPSS' },
-          { sector: 'C', boxNumber: 15, fullName: 'Walid Gharbi', equipe: 'OPEN' },
-          { sector: 'C', boxNumber: 16, fullName: 'Mohamed Chedli Cherif', equipe: 'PLANET' },
-          { sector: 'C', boxNumber: 17, fullName: 'Aladain Letaief', equipe: 'ETOILE BLEUE SOUSSE' },
-          { sector: 'C', boxNumber: 18, fullName: 'Riadh Jaouadi', equipe: 'TST' },
-          { sector: 'C', boxNumber: 19, fullName: 'Ramzi Idoudi', equipe: 'PIRANHA' },
-          { sector: 'C', boxNumber: 20, fullName: 'Faten Jemmali', equipe: 'CPS NABEUL' },
-          
-          // Sector D
-          { sector: 'D', boxNumber: 1, fullName: 'Hamdi Gdara', equipe: 'MED FISHING' },
-          { sector: 'D', boxNumber: 2, fullName: 'Mohamed Ghazi Jaziri', equipe: 'PIRANHA' },
-          { sector: 'D', boxNumber: 3, fullName: 'Amar Nechat', equipe: 'OPEN' },
-          { sector: 'D', boxNumber: 4, fullName: 'Moheb Salah', equipe: 'TPL' },
-          { sector: 'D', boxNumber: 5, fullName: 'Marwen Douiri', equipe: 'TST' },
-          { sector: 'D', boxNumber: 6, fullName: 'Mohamed Douss', equipe: 'PLANET' },
-          { sector: 'D', boxNumber: 7, fullName: 'Mohamed El Kefi', equipe: 'CPS NABEUL' },
-          { sector: 'D', boxNumber: 8, fullName: 'Marouen Zouari', equipe: 'TST' },
-          { sector: 'D', boxNumber: 9, fullName: 'Saif Allah Ben Zarga', equipe: 'PIRANHA' },
-          { sector: 'D', boxNumber: 10, fullName: 'Mehdi Sayadi', equipe: 'ORCA' },
-          { sector: 'D', boxNumber: 11, fullName: 'Anouar Chouat', equipe: 'AS MARSA' },
-          { sector: 'D', boxNumber: 12, fullName: 'Noureddine Ben Khedija', equipe: 'ETOILE BLEUE SOUSSE' },
-          { sector: 'D', boxNumber: 13, fullName: 'Mhamed Gannar', equipe: 'TST' },
-          { sector: 'D', boxNumber: 14, fullName: 'Nebil Bousselmi', equipe: 'PIRANHA' },
-          { sector: 'D', boxNumber: 15, fullName: 'Mokhtar Ramdani', equipe: 'SÉTIFIEN DZ' },
-          { sector: 'D', boxNumber: 16, fullName: 'Brahim ALIANI', equipe: 'TST' },
-          { sector: 'D', boxNumber: 17, fullName: 'Walid Hakim', equipe: 'CPSS' },
-          { sector: 'D', boxNumber: 18, fullName: 'Reda Guenfissi', equipe: 'ECOSIUM' },
-          { sector: 'D', boxNumber: 19, fullName: 'Mohamed Mokaddem', equipe: 'PLANET' },
-          { sector: 'D', boxNumber: 20, fullName: 'Taib Maaoui', equipe: 'PIRANHA' },
-          
-          // Sector E
-          { sector: 'E', boxNumber: 1, fullName: 'Tayssir Dimassi', equipe: 'OPEN' },
-          { sector: 'E', boxNumber: 2, fullName: 'Mohamed Amir Nasri', equipe: 'PIRANHA' },
-          { sector: 'E', boxNumber: 3, fullName: 'Karim Hammoudi', equipe: 'OPEN' },
-          { sector: 'E', boxNumber: 4, fullName: 'Abdelkader Zouari', equipe: 'CPSS' },
-          { sector: 'E', boxNumber: 5, fullName: 'Natalia Trounova', equipe: 'TPL' },
-          { sector: 'E', boxNumber: 6, fullName: 'Tawfik Orfi', equipe: 'TST' },
-          { sector: 'E', boxNumber: 7, fullName: 'Mohamed Turki', equipe: 'PIRANHA' },
-          { sector: 'E', boxNumber: 8, fullName: 'Seifeddine Touil', equipe: 'CN RAS JEBAL' },
-          { sector: 'E', boxNumber: 9, fullName: 'Bilel Mayara', equipe: 'CPS NABEUL' },
-          { sector: 'E', boxNumber: 10, fullName: 'Anis El Feiz', equipe: 'TST' },
-          { sector: 'E', boxNumber: 11, fullName: 'Tarik Zebairi', equipe: 'Horizon Atlantique' },
-          { sector: 'E', boxNumber: 12, fullName: 'Assaad Troudi', equipe: 'AS MARSA' },
-          { sector: 'E', boxNumber: 13, fullName: 'Riadh M', equipe: 'PIRANHA' },
-          { sector: 'E', boxNumber: 14, fullName: 'Mohamed Amine Ben Aouana', equipe: 'ETOILE BLEUE SOUSSE' },
-          { sector: 'E', boxNumber: 15, fullName: 'Amine Boussaa', equipe: 'TST' },
-          { sector: 'E', boxNumber: 16, fullName: 'Rami Trigui', equipe: 'CPSS' },
-          { sector: 'E', boxNumber: 17, fullName: 'Nizar Welhazi', equipe: 'PLANET' },
-          { sector: 'E', boxNumber: 18, fullName: 'Aymen Ben Arfaa', equipe: 'PIRANHA' },
-          { sector: 'E', boxNumber: 19, fullName: 'Oussema Klai', equipe: 'OPEN' },
-          { sector: 'E', boxNumber: 20, fullName: 'Mariem Hakim Safraoui', equipe: 'TST' },
-          
-          // Sector F
-          { sector: 'F', boxNumber: 1, fullName: 'Mounir El Haddad', equipe: 'TST' },
-          { sector: 'F', boxNumber: 2, fullName: 'Mohamed Bouazra', equipe: 'CPS NABEUL' },
-          { sector: 'F', boxNumber: 3, fullName: 'Karim Mokaddem', equipe: 'AS MARSA' },
-          { sector: 'F', boxNumber: 4, fullName: 'Mohamed Abouda', equipe: 'ETOILE BLEUE SOUSSE' },
-          { sector: 'F', boxNumber: 5, fullName: 'Ghassen Souissi', equipe: 'PIRANHA' },
-          { sector: 'F', boxNumber: 6, fullName: 'Ibrahim Merwan Touami', equipe: 'OPEN' },
-          { sector: 'F', boxNumber: 7, fullName: 'Maher Ben Taieb', equipe: 'TST' },
-          { sector: 'F', boxNumber: 8, fullName: 'Elaine Vredenburg', equipe: 'HSV de Slufter' },
-          { sector: 'F', boxNumber: 9, fullName: 'Mohamed Larbi Agli', equipe: 'OPEN' },
-          { sector: 'F', boxNumber: 10, fullName: 'Souhail Smaoui', equipe: 'CPSS' },
-          { sector: 'F', boxNumber: 11, fullName: 'Rayen Galai', equipe: 'PIRANHA' },
-          { sector: 'F', boxNumber: 12, fullName: 'Akram khelifa', equipe: 'OPEN' },
-          { sector: 'F', boxNumber: 13, fullName: 'Mhamed Belalgia', equipe: 'TST' },
-          { sector: 'F', boxNumber: 14, fullName: 'Mahdi Karoui', equipe: 'TPL' },
-          { sector: 'F', boxNumber: 15, fullName: 'Foued Harzalleoui', equipe: 'AS MARSA' },
-          { sector: 'F', boxNumber: 16, fullName: 'Khalil Issaoui', equipe: 'CPS NABEUL' },
-          { sector: 'F', boxNumber: 17, fullName: 'Hichem Bouzouita', equipe: 'TST' },
-          { sector: 'F', boxNumber: 18, fullName: 'Seif Eddine Ben Ayed', equipe: 'PIRANHA' },
-          { sector: 'F', boxNumber: 19, fullName: 'Hassen Lanssari', equipe: 'PLANET' },
-          { sector: 'F', boxNumber: 20, fullName: 'Nejah Abdeljawed', equipe: 'TST' }
-        ];
-
-        // Convert to the required format
-        const allCompetitors = officialCompetitors.map(comp => ({
-          id: `comp-${comp.sector.toLowerCase()}-${comp.boxNumber}`,
-          sector: comp.sector,
-          boxNumber: comp.boxNumber,
-          boxCode: `${comp.sector}${String(comp.boxNumber).padStart(2, '0')}`,
-          fullName: comp.fullName,
-          equipe: comp.equipe,
-          photo: `https://images.pexels.com/photos/${1000000 + Math.floor(Math.random() * 1000000)}/pexels-photo.jpeg?auto=compress&cs=tinysrgb&w=150&h=150`,
-          lastUpdate: new Date(),
-          source: 'Admin',
-          status: 'active'
-        }));
-
-        localStorage.setItem('competitors', JSON.stringify(allCompetitors));
+    hourlyEntries.forEach(entry => {
+      if (!data[entry.competitorId]) {
+        data[entry.competitorId] = {};
       }
-
-      const existingHourlyData = localStorage.getItem('hourlyData');
-      const existingGrossePriseData = localStorage.getItem('grossePriseData');
-      
-      if (!existingHourlyData) {
-        // Generate demo hourly data
-        const demoHourlyData: any = {};
-        sectors.forEach(sector => {
-          demoHourlyData[sector] = {};
-          for (let hour = 1; hour <= 3; hour++) { // Only first 3 hours for demo
-            demoHourlyData[sector][hour] = {};
-            
-            // Add some demo entries for first few competitors
-            for (let i = 1; i <= 10; i++) {
-              const competitorId = `comp-${sector.toLowerCase()}-${i}`;
-              demoHourlyData[sector][hour][competitorId] = {
-                competitorId,
-                boxNumber: i,
-                fishCount: Math.floor(Math.random() * 5) + 1,
-                totalWeight: Math.floor(Math.random() * 300) + 100,
-                status: 'locked_judge',
-                timestamp: new Date(Date.now() - Math.random() * 3600000).toISOString(),
-                source: 'Judge'
-              };
-            }
-          }
-        });
-        
-        localStorage.setItem('hourlyData', JSON.stringify(demoHourlyData));
-      }
-      
-      if (!existingGrossePriseData) {
-        // Generate demo grosse prise data
-        const demoGrossePriseData: any = {};
-        sectors.forEach(sector => {
-          demoGrossePriseData[sector] = {};
-          
-          // Add grosse prise for first 5 competitors
-          for (let i = 1; i <= 5; i++) {
-            const competitorId = `comp-${sector.toLowerCase()}-${i}`;
-            demoGrossePriseData[sector][competitorId] = {
-              competitorId,
-              boxNumber: i,
-              biggestCatch: Math.floor(Math.random() * 200) + 50,
-              status: 'locked_judge',
-              timestamp: new Date(Date.now() - Math.random() * 3600000).toISOString(),
-              source: 'Judge'
-            };
-          }
-        });
-        
-        localStorage.setItem('grossePriseData', JSON.stringify(demoGrossePriseData));
-      }
-      
-      // Reload data after generating demo data
-      setTimeout(() => {
-        loadData();
-      }, 100);
-    }
-    // Load logo settings
-    if (typeof window !== 'undefined') {
-      try {
-        const savedSettings = localStorage.getItem('publicAppearanceSettings');
-        if (savedSettings) {
-          const settings = JSON.parse(savedSettings);
-          setLogoSettings(settings.logos || { light: '', dark: '' });
-        }
-      } catch (error) {
-        console.error('Error loading logo settings:', error);
-      }
-    }
-  }, []);
-
-  // Listen for real-time updates
-  useEffect(() => {
-    const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === 'competitors') {
-        setAllCompetitors(getAllCompetitors());
-      } else if (e.key === 'hourlyData') {
-        setHourlyData(getHourlyData());
-      } else if (e.key === 'grossePriseData') {
-        setGrossePriseData(getGrossePriseData());
-      } else if (e.key === 'publicAppearanceSettings' && e.newValue) {
-        try {
-          const settings = JSON.parse(e.newValue);
-          setLogoSettings(settings.logos || { light: '', dark: '' });
-        } catch (error) {
-          console.error('Error parsing logo settings:', error);
-        }
-      }
-    };
+      data[entry.competitorId][entry.hour] = {
+        fishCount: entry.fishCount,
+        totalWeight: entry.totalWeight,
+        status: entry.status,
+        timestamp: entry.timestamp?.toDate ? entry.timestamp.toDate() : new Date()
+      };
+    });
     
-    window.addEventListener('storage', handleStorageChange);
-    return () => window.removeEventListener('storage', handleStorageChange);
-  }, []);
+    return data;
+  }, [hourlyEntries]);
+  
+  const bigCatchesByCompetitor = useMemo(() => {
+    const data: { [competitorId: string]: any } = {};
+    
+    bigCatches.forEach(entry => {
+      data[entry.competitorId] = {
+        biggestCatch: entry.biggestCatch,
+        status: entry.status,
+        timestamp: entry.timestamp?.toDate ? entry.timestamp.toDate() : new Date()
+      };
+    });
+    
+    return data;
+  }, [bigCatches]);
 
   // Calculate live data for all competitors
   const calculatedCompetitors = useMemo(() => {
@@ -418,9 +115,7 @@ export default function LiveGeneralRanking() {
     const competitorsBySector: { [sector: string]: CalculatedCompetitor[] } = {};
     
     sectors.forEach(sector => {
-      const sectorCompetitors = allCompetitors.filter(comp => comp.sector === sector);
-      const sectorHourlyData = hourlyData[sector] || {};
-      const sectorGrossePriseData = grossePriseData[sector] || {};
+      const sectorCompetitors = competitors.filter(comp => comp.sector === sector);
       
       // Calculate totals for each competitor in this sector
       const sectorCalculated: CalculatedCompetitor[] = sectorCompetitors.map(competitor => {
@@ -430,8 +125,7 @@ export default function LiveGeneralRanking() {
         
         // Sum across all 7 hours
         for (let hour = 1; hour <= 7; hour++) {
-          const hourData = sectorHourlyData[hour] || {};
-          const entry = hourData[competitor.id];
+          const entry = hourlyDataByCompetitor[competitor.id]?.[hour];
           
           if (entry && ['locked_judge', 'locked_admin', 'offline_judge', 'offline_admin'].includes(entry.status)) {
             nbPrisesGlobal += entry.fishCount;
@@ -444,7 +138,7 @@ export default function LiveGeneralRanking() {
         }
         
         // Get grosse prise
-        const grossePriseEntry = sectorGrossePriseData[competitor.id];
+        const grossePriseEntry = bigCatchesByCompetitor[competitor.id];
         const grossePrise = grossePriseEntry && ['locked_judge', 'locked_admin', 'offline_judge', 'offline_admin'].includes(grossePriseEntry.status) 
           ? grossePriseEntry.biggestCatch 
           : 0;
@@ -455,8 +149,8 @@ export default function LiveGeneralRanking() {
         return {
           id: competitor.id,
           boxNumber: competitor.boxNumber,
-          boxCode: competitor.boxCode,
-          name: competitor.name,
+          boxCode: `${competitor.sector}${String(competitor.boxNumber).padStart(2, '0')}`,
+          name: competitor.fullName,
           equipe: competitor.equipe,
           sector: competitor.sector,
           nbPrisesGlobal,
@@ -577,7 +271,7 @@ export default function LiveGeneralRanking() {
     });
     
     return [...nonZeroCompetitors, ...zeroCoeffCompetitors];
-  }, [allCompetitors, hourlyData, grossePriseData]);
+  }, [competitors, hourlyDataByCompetitor, bigCatchesByCompetitor]);
 
   // Apply sorting
   const sortedCompetitors = useMemo(() => {
@@ -715,17 +409,14 @@ export default function LiveGeneralRanking() {
     }
   };
 
-  const getCurrentLogo = () => {
-    // For PDF, prefer light logo, fallback to dark if light not available
-    if (logoSettings.light) {
-      return logoSettings.light;
-    } else if (logoSettings.dark) {
-      return logoSettings.dark;
-    }
-    return null;
-  };
-
   const handleDownloadPDF = () => {
+    // Log export action to Firebase
+    auditLog({
+      action: 'EXPORT_GENERAL_RANKING',
+      details: `Export PDF classement général - ${filteredCompetitors.length} compétiteurs`,
+      metadata: { sectorFilter, searchQuery, totalCompetitors: filteredCompetitors.length }
+    });
+    
     const currentDate = new Date().toLocaleDateString('fr-FR', { 
       timeZone: 'Africa/Tunis',
       weekday: 'long',
@@ -741,8 +432,8 @@ export default function LiveGeneralRanking() {
       second: '2-digit'
     });
 
-    const logoHtml = getCurrentLogo() 
-      ? `<img src="${getCurrentLogo()}" alt="Titanium Tunisia Open" style="height: 80px; margin: 0 auto 20px auto; display: block;" />`
+    const logoHtml = publicAppearanceSettings?.logos?.light || publicAppearanceSettings?.logos?.dark
+      ? `<img src="${publicAppearanceSettings.logos.light || publicAppearanceSettings.logos.dark}" alt="Titanium Tunisia Open" style="height: 80px; margin: 0 auto 20px auto; display: block;" />`
       : `<div style="text-align: center; margin-bottom: 20px;">
            <h1 style="color: #0ea5e9; font-size: 24px; margin: 0;">Titanium Tunisia Open</h1>
          </div>`;
@@ -890,7 +581,7 @@ export default function LiveGeneralRanking() {
           </div>
         </body>
       </html>
-    `;
+    `.trim();
 
     // Create and download PDF-ready HTML
     const blob = new Blob([tableHTML], { type: 'text/html;charset=utf-8' });
