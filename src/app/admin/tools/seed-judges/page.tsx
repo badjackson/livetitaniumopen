@@ -42,7 +42,7 @@ const defaultJudges: JudgeData[] = [
     sector: null,
     name: 'Admin User',
     username: 'Black@2050',
-    email: 'admin@titaniumopen.com',
+    email: 'admin@titanium-f7b50.com',
     status: 'active'
   },
   {
@@ -50,7 +50,7 @@ const defaultJudges: JudgeData[] = [
     sector: 'A',
     name: 'Juge A',
     username: 'juge.a',
-    email: 'juge.a@titaniumopen.com',
+    email: 'juge.a@titanium-f7b50.com',
     status: 'active'
   },
   {
@@ -58,7 +58,7 @@ const defaultJudges: JudgeData[] = [
     sector: 'B',
     name: 'Juge B',
     username: 'juge.b',
-    email: 'juge.b@titaniumopen.com',
+    email: 'juge.b@titanium-f7b50.com',
     status: 'active'
   },
   {
@@ -66,7 +66,7 @@ const defaultJudges: JudgeData[] = [
     sector: 'C',
     name: 'Juge C',
     username: 'juge.c',
-    email: 'juge.c@titaniumopen.com',
+    email: 'juge.c@titanium-f7b50.com',
     status: 'active'
   },
   {
@@ -74,7 +74,7 @@ const defaultJudges: JudgeData[] = [
     sector: 'D',
     name: 'Juge D',
     username: 'juge.d',
-    email: 'juge.d@titaniumopen.com',
+    email: 'juge.d@titanium-f7b50.com',
     status: 'active'
   },
   {
@@ -82,7 +82,7 @@ const defaultJudges: JudgeData[] = [
     sector: 'E',
     name: 'Juge E',
     username: 'juge.e',
-    email: 'juge.e@titaniumopen.com',
+    email: 'juge.e@titanium-f7b50.com',
     status: 'active'
   },
   {
@@ -90,7 +90,7 @@ const defaultJudges: JudgeData[] = [
     sector: 'F',
     name: 'Juge F',
     username: 'juge.f',
-    email: 'juge.f@titaniumopen.com',
+    email: 'juge.f@titanium-f7b50.com',
     status: 'active'
   }
 ];

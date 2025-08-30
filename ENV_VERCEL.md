@@ -9,7 +9,7 @@ Ces variables doivent être configurées dans Vercel → Settings → Environmen
 NEXT_PUBLIC_FB_API_KEY=your_api_key_here
 NEXT_PUBLIC_FB_AUTH_DOMAIN=your_project.firebaseapp.com
 NEXT_PUBLIC_FB_PROJECT_ID=your_project_id
-NEXT_PUBLIC_FB_STORAGE_BUCKET=your_project.appspot.com
+NEXT_PUBLIC_FB_STORAGE_BUCKET=your_project.firebasestorage.app
 NEXT_PUBLIC_FB_MSG_SENDER_ID=123456789
 NEXT_PUBLIC_FB_APP_ID=1:123456789:web:abcdef123456
 ```

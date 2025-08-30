@@ -31,13 +31,13 @@ export interface UserSession {
 // Username to email mapping
 const usernameToEmail = (username: string): string => {
   const mappings: { [key: string]: string } = {
-    'Black@2050': 'admin@titaniumopen.com',
-    'juge.a': 'juge.a@titaniumopen.com',
-    'juge.b': 'juge.b@titaniumopen.com',
-    'juge.c': 'juge.c@titaniumopen.com',
-    'juge.d': 'juge.d@titaniumopen.com',
-    'juge.e': 'juge.e@titaniumopen.com',
-    'juge.f': 'juge.f@titaniumopen.com',
+    'Black@2050': 'admin@titanium-f7b50.com',
+    'juge.a': 'juge.a@titanium-f7b50.com',
+    'juge.b': 'juge.b@titanium-f7b50.com',
+    'juge.c': 'juge.c@titanium-f7b50.com',
+    'juge.d': 'juge.d@titanium-f7b50.com',
+    'juge.e': 'juge.e@titanium-f7b50.com',
+    'juge.f': 'juge.f@titanium-f7b50.com',
   };
   
   // If it's already an email, return as is
@@ -65,8 +65,8 @@ export const loginWithFirebase = async (username: string, password: string) => {
         id: user.uid,
         name: user.displayName || user.email?.split('@')[0] || 'Unknown',
         username: user.email?.split('@')[0] || 'unknown',
-        role: user.email === 'admin@titaniumopen.com' ? 'admin' : 'judge',
-        sector: user.email === 'admin@titaniumopen.com' ? null : 'A',
+        role: user.email === 'admin@titanium-f7b50.com' ? 'admin' : 'judge',
+        sector: user.email === 'admin@titanium-f7b50.com' ? null : 'A',
         loginTime: new Date().toISOString()
       };
       
