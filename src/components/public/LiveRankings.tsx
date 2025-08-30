@@ -929,9 +929,7 @@ export default function LiveRankings() {
             {/* Hidden rows indicator */}
             {!showAll && hiddenCount > 0 && (
               <div className="mt-6 text-center">
-                  <span>BOX N°</span>
-                  {hiddenCount} autres compétiteurs masqués
-                </div>
+                <span>{hiddenCount} autres compétiteurs masqués</span>
               </div>
             )}
           </CardContent>

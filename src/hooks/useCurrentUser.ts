@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { logoutFromFirebase } from '@/lib/auth';
 
 interface UserSession {
   id: number;
@@ -64,13 +65,7 @@ export function useCurrentUser() {
   }, []);
 
   const logout = () => {
-    if (typeof window !== 'undefined') {
-      localStorage.removeItem('currentUserSession');
-      localStorage.removeItem('isAuthenticated');
-      sessionStorage.removeItem('currentUserSessionBackup');
-      sessionStorage.removeItem('isAuthenticated');
-      sessionStorage.clear();
-    }
+    logoutFromFirebase();
     setCurrentUser(null);
   };
 

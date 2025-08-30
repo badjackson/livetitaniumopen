@@ -1,5 +1,6 @@
 /** @type {import('next').Config} */
 const nextConfig = {
+  optimizeFonts: false,
   images: {
     domains: ['images.unsplash.com', 'images.pexels.com'],
   },

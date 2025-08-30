@@ -183,15 +183,46 @@ export default function SettingsPage() {
       sessionStorage.removeItem('hourlyDataBackup');
       sessionStorage.removeItem('grossePriseDataBackup');
       
+      // Clear all sessionStorage fallback entries
+      const sessionKeys = Object.keys(sessionStorage);
+      sessionKeys.forEach(key => {
+        if (key.includes('hourlyData_') || key.includes('grossePrise_') || key.includes('fallback_')) {
+          sessionStorage.removeItem(key);
+        }
+      });
+      
+      // Clear localStorage fallback entries
+      const localKeys = Object.keys(localStorage);
+      localKeys.forEach(key => {
+        if (key.includes('hourlyData_') || key.includes('grossePrise_') || key.includes('fallback_')) {
+          localStorage.removeItem(key);
+        }
+      });
+      
       // Trigger storage events for live updates
       window.dispatchEvent(new StorageEvent('storage', {
         key: 'hourlyData',
-        newValue: JSON.stringify({})
+        newValue: null
       }));
       
       window.dispatchEvent(new StorageEvent('storage', {
         key: 'grossePriseData',
-        newValue: JSON.stringify({})
+        newValue: null
+      }));
+
+      // Force reload of all components by clearing and resetting
+      localStorage.setItem('hourlyData', '{}');
+      localStorage.setItem('grossePriseData', '{}');
+      
+      // Trigger final update events
+      window.dispatchEvent(new StorageEvent('storage', {
+        key: 'hourlyData',
+        newValue: '{}'
+      }));
+      
+      window.dispatchEvent(new StorageEvent('storage', {
+        key: 'grossePriseData',
+        newValue: '{}'
       }));
 
       // Create audit entry
@@ -201,7 +232,7 @@ export default function SettingsPage() {
         user: 'Admin User',
         timestamp: new Date().toISOString(),
         details: 'Reset complet des données de compétition - H1-H7 et grosse prise pour tous les secteurs',
-        affectedData: ['hourlyData', 'grossePriseData', 'individual_backups'],
+        affectedData: ['hourlyData', 'grossePriseData', 'individual_backups', 'session_backups'],
         sectorsAffected: sectors,
         entriesCleared: {
           hourlyEntries: sectors.length * 7 * 20, // 6 secteurs × 7 heures × 20 compétiteurs
@@ -218,6 +249,7 @@ export default function SettingsPage() {
         grossePriseDataCleared: true,
         individualBackupsCleared: true,
         sessionBackupsCleared: true,
+        fallbackEntriesCleared: true,
         auditEntryCreated: true,
         timestamp: new Date().toISOString()
       });
@@ -232,6 +264,9 @@ export default function SettingsPage() {
       });
       
       alert('Reset des données de compétition terminé avec succès !\n\nToutes les données de prises (H1-H7) et grosse prise ont été supprimées de tous les secteurs.\n\nLes compétiteurs, juges et paramètres ont été conservés.');
+      
+      // Force page reload to ensure all components refresh
+      window.location.reload();
     }, 2000);
   };
 

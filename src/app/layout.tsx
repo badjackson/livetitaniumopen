@@ -4,7 +4,7 @@ import './globals.css';
 import { ThemeProvider } from '@/components/providers/ThemeProvider';
 import { SocketProvider } from '@/components/providers/SocketProvider';
 import { TranslationProvider } from '@/components/providers/TranslationProvider';
-import { FirebaseProvider } from '@/components/providers/FirebaseProvider';
+import FirestoreSyncProvider from '@/components/providers/FirestoreSyncProvider';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -48,107 +48,6 @@ export default function RootLayout({
                   if (theme === 'dark') {
                     document.documentElement.classList.add('dark');
                   }
-                  
-                  // Ensure judge logins always exist
-                  var defaultUsers = [
-                    {
-                      id: 1,
-                      name: 'Admin User',
-                      username: 'Black@2050',
-                      email: 'admin@tunisiaopen.com',
-                      role: 'admin',
-                      status: 'active',
-                      password: '2050@5020',
-                      lastLogin: '',
-                      createdAt: '2025-01-01',
-                    },
-                    {
-                      id: 2,
-                      name: 'Juge A',
-                      username: 'juge.a',
-                      email: 'juge.a@tunisiaopen.com',
-                      role: 'judge',
-                      status: 'active',
-                      password: '#Juge@A',
-                      lastLogin: '',
-                      createdAt: '2025-01-15',
-                    },
-                    {
-                      id: 3,
-                      name: 'Juge B',
-                      username: 'juge.b',
-                      email: 'juge.b@tunisiaopen.com',
-                      role: 'judge',
-                      status: 'active',
-                      password: '#Juge@B',
-                      lastLogin: '',
-                      createdAt: '2025-01-15',
-                    },
-                    {
-                      id: 4,
-                      name: 'Juge C',
-                      username: 'juge.c',
-                      email: 'juge.c@tunisiaopen.com',
-                      role: 'judge',
-                      status: 'active',
-                      password: '#Juge@C',
-                      lastLogin: '',
-                      createdAt: '2025-01-15',
-                    },
-                    {
-                      id: 5,
-                      name: 'Juge D',
-                      username: 'juge.d',
-                      email: 'juge.d@tunisiaopen.com',
-                      role: 'judge',
-                      status: 'active',
-                      password: '#Juge@D',
-                      lastLogin: '',
-                      createdAt: '2025-01-15',
-                    },
-                    {
-                      id: 6,
-                      name: 'Juge E',
-                      username: 'juge.e',
-                      email: 'juge.e@tunisiaopen.com',
-                      role: 'judge',
-                      status: 'active',
-                      password: '#Juge@E',
-                      lastLogin: '',
-                      createdAt: '2025-01-15',
-                    },
-                    {
-                      id: 7,
-                      name: 'Juge F',
-                      username: 'juge.f',
-                      email: 'juge.f@tunisiaopen.com',
-                      role: 'judge',
-                      status: 'active',
-                      password: '#Juge@F',
-                      lastLogin: '',
-                      createdAt: '2025-01-15',
-                    },
-                  ];
-                  
-                  // Always ensure these users exist
-                  var existingUsers = JSON.parse(localStorage.getItem('adminUsers') || '[]');
-                  var needsUpdate = false;
-                  
-                  defaultUsers.forEach(function(defaultUser) {
-                    var existingIndex = existingUsers.findIndex(function(u) { return u.username === defaultUser.username; });
-                    if (existingIndex >= 0) {
-                      // Update existing user to ensure correct password
-                      existingUsers[existingIndex] = defaultUser;
-                    } else {
-                      // Add missing user
-                      existingUsers.push(defaultUser);
-                      needsUpdate = true;
-                    }
-                  });
-                  
-                  if (needsUpdate || existingUsers.length !== defaultUsers.length) {
-                    localStorage.setItem('adminUsers', JSON.stringify(existingUsers));
-                  }
                 } catch (e) {}
               })();
             `,
@@ -159,9 +58,9 @@ export default function RootLayout({
         <ThemeProvider>
           <SocketProvider>
             <TranslationProvider>
-              <FirebaseProvider>
+              <FirestoreSyncProvider>
                 {children}
-              </FirebaseProvider>
+              </FirestoreSyncProvider>
             </TranslationProvider>
           </SocketProvider>
         </ThemeProvider>
