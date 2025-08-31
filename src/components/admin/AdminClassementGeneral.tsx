@@ -540,7 +540,7 @@ export default function AdminClassementGeneral() {
     a.download = `classement-general-admin-${new Date().toISOString().slice(0, 10)}.html`;
     a.click();
     URL.revokeObjectURL(url);
-  };
+  }
 
   return (
     <div className="h-screen flex flex-col">
