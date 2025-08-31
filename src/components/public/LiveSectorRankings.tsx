@@ -512,7 +512,6 @@ export default function LiveSectorRankings() {
     a.click();
     URL.revokeObjectURL(url);
   };
-  };
 
   return (
     <section id="classement-secteur" className="py-16 bg-gradient-to-br from-sand-50 to-coral-50 dark:from-gray-800 dark:to-gray-900">

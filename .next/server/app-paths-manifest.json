@@ -1,11 +1,8 @@
 {
   "/page": "app/page.js",
   "/_not-found/page": "app/_not-found/page.js",
-  "/login/page": "app/login/page.js",
   "/admin/prises/page": "app/admin/prises/page.js",
-  "/admin/competiteurs/page": "app/admin/competiteurs/page.js",
-  "/admin/grosse-prise/page": "app/admin/grosse-prise/page.js",
   "/admin/calculs-live/page": "app/admin/calculs-live/page.js",
-  "/admin/page": "app/admin/page.js",
-  "/admin/juges/page": "app/admin/juges/page.js"
+  "/admin/grosse-prise/page": "app/admin/grosse-prise/page.js",
+  "/admin/classement-general/page": "app/admin/classement-general/page.js"
 }
