@@ -182,10 +182,10 @@ export default function LiveSectorRankings() {
     
     // Sort by Points (desc) for sector ranking
     const sorted = [...calculated].sort((a, b) => {
-      return b.points - a.points; // Sort by Points (desc)
+      return b.points - a.points; // Sort by Points (desc) only
     });
     
-    // Assign sector rankings (1-20)
+    // Assign sector rankings
     sorted.forEach((comp, index) => {
       comp.classementSecteur = index + 1;
     });
@@ -194,13 +194,24 @@ export default function LiveSectorRankings() {
   }, [firestoreCompetitors, hourlyDataByCompetitor, bigCatchesByCompetitor, activeSector]);
 
   // Calculate sector totals
-  const sectorTotals = useMemo((): SectorTotals => {
-    return {
-      nbPrisesGlobal: calculatedCompetitors.reduce((sum, comp) => sum + comp.nbPrisesGlobal, 0),
-      poidsTotal: calculatedCompetitors.reduce((sum, comp) => sum + comp.poidsTotal, 0),
-      points: calculatedCompetitors.reduce((sum, comp) => sum + comp.points, 0),
-      grossePriseMax: Math.max(0, ...calculatedCompetitors.map(comp => comp.grossePrise))
+  const sectorTotals = useMemo(() => {
+    const totals: SectorTotals = {
+      nbPrisesGlobal: 0,
+      poidsTotal: 0,
+      points: 0,
+      grossePriseMax: 0
     };
+    
+    calculatedCompetitors.forEach(comp => {
+      totals.nbPrisesGlobal += comp.nbPrisesGlobal;
+      totals.poidsTotal += comp.poidsTotal;
+      totals.points += comp.points;
+      if (comp.grossePrise > totals.grossePriseMax) {
+        totals.grossePriseMax = comp.grossePrise;
+      }
+    });
+    
+    return totals;
   }, [calculatedCompetitors]);
 
   // Apply sorting
@@ -585,6 +596,26 @@ export default function LiveSectorRankings() {
               </select>
             </div>
 
+            {/* Connection Status */}
+            <div className="flex items-center justify-between mb-4 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
+              <div className="flex items-center space-x-2">
+                {isOnline ? (
+                  <>
+                    <Wifi className="w-4 h-4 text-green-500" />
+                    <span className="text-sm text-green-600 dark:text-green-400">Connecté - Données en temps réel</span>
+                  </>
+                ) : (
+                  <>
+                    <WifiOff className="w-4 h-4 text-red-500" />
+                    <span className="text-sm text-red-600 dark:text-red-400">Hors ligne - Dernières données disponibles</span>
+                  </>
+                )}
+              </div>
+              <div className="text-xs text-gray-500 dark:text-gray-400">
+                {filteredCompetitors.length} compétiteur{filteredCompetitors.length > 1 ? 's' : ''} affiché{filteredCompetitors.length > 1 ? 's' : ''}
+              </div>
+            </div>
+
             {/* Table */}
             <div className="overflow-x-auto">
               <table className="w-full">
@@ -795,6 +826,34 @@ export default function LiveSectorRankings() {
                   </tr>
                 </tbody>
               </table>
+            </div>
+
+            {/* Summary Stats */}
+            <div className="mt-6 grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg text-center">
+                <div className="text-2xl font-bold text-ocean-600 dark:text-ocean-400">
+                  {calculatedCompetitors.length}
+                </div>
+                <div className="text-sm text-gray-600 dark:text-gray-400">Compétiteurs</div>
+              </div>
+              <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg text-center">
+                <div className="text-2xl font-bold text-green-600 dark:text-green-400">
+                  {formatNumber(sectorTotals.nbPrisesGlobal)}
+                </div>
+                <div className="text-sm text-gray-600 dark:text-gray-400">Prises totales</div>
+              </div>
+              <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg text-center">
+                <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">
+                  {formatWeight(sectorTotals.poidsTotal)}
+                </div>
+                <div className="text-sm text-gray-600 dark:text-gray-400">Poids total</div>
+              </div>
+              <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg text-center">
+                <div className="text-2xl font-bold text-purple-600 dark:text-purple-400">
+                  {sectorTotals.grossePriseMax > 0 ? formatWeight(sectorTotals.grossePriseMax) : '—'}
+                </div>
+                <div className="text-sm text-gray-600 dark:text-gray-400">Plus grosse prise</div>
+              </div>
             </div>
           </CardContent>
         </Card>
