@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { useSearchParams } from 'next/navigation';
+import { useFirestore } from '@/components/providers/FirestoreSyncProvider';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import Button from '@/components/ui/Button';
@@ -12,7 +13,9 @@ import {
   ArrowUpDown,
   Trophy,
   Medal,
-  Award
+  Award,
+  Wifi,
+  WifiOff
 } from 'lucide-react';
 import { formatWeight, formatNumber, formatTime } from '@/lib/utils';
 
@@ -23,25 +26,6 @@ interface Competitor {
   name: string;
   equipe: string;
   sector: string;
-}
-
-interface HourlyEntry {
-  competitorId: string;
-  boxNumber: number;
-  fishCount: number;
-  totalWeight: number;
-  status: string;
-  timestamp?: Date;
-  source: 'Judge' | 'Admin';
-}
-
-interface GrossePriseEntry {
-  competitorId: string;
-  boxNumber: number;
-  biggestCatch: number;
-  status: string;
-  timestamp?: Date;
-  source: 'Judge' | 'Admin';
 }
 
 interface CalculatedCompetitor {
@@ -67,151 +51,75 @@ interface SectorTotals {
   grossePriseMax: number;
 }
 
-// Get competitors from localStorage
-const getCompetitorsBySector = (): { [sector: string]: Competitor[] } => {
-  if (typeof window !== 'undefined') {
-    try {
-      const savedCompetitors = localStorage.getItem('competitors');
-      if (savedCompetitors) {
-        const allCompetitors = JSON.parse(savedCompetitors);
-        const competitorsBySector: { [sector: string]: Competitor[] } = {};
-        
-        allCompetitors.forEach((comp: any) => {
-          if (!competitorsBySector[comp.sector]) {
-            competitorsBySector[comp.sector] = [];
-          }
-          
-          competitorsBySector[comp.sector].push({
-            id: comp.id,
-            boxNumber: comp.boxNumber,
-            boxCode: comp.boxCode,
-            name: comp.fullName,
-            equipe: comp.equipe,
-            sector: comp.sector,
-          });
-        });
-        
-        return competitorsBySector;
-      }
-    } catch (error) {
-      console.error('Error loading competitors:', error);
-    }
-  }
-  
-  return {};
-};
-
-// Get hourly data from localStorage
-const getHourlyData = (): { [sector: string]: { [hour: number]: { [competitorId: string]: HourlyEntry } } } => {
-  if (typeof window !== 'undefined') {
-    try {
-      const savedData = localStorage.getItem('hourlyData');
-      if (savedData) {
-        const allHourlyData = JSON.parse(savedData);
-        // Convert timestamp strings back to Date objects
-        Object.keys(allHourlyData).forEach(sector => {
-          Object.keys(allHourlyData[sector] || {}).forEach(hour => {
-            Object.keys(allHourlyData[sector][hour] || {}).forEach(competitorId => {
-              const entry = allHourlyData[sector][hour][competitorId];
-              if (entry.timestamp) {
-                entry.timestamp = new Date(entry.timestamp);
-              }
-            });
-          });
-        });
-        return allHourlyData;
-      }
-    } catch (error) {
-      console.error('Error loading hourly data:', error);
-    }
-  }
-  
-  return {};
-};
-
-// Get grosse prise data from localStorage
-const getGrossePriseData = (): { [sector: string]: { [competitorId: string]: GrossePriseEntry } } => {
-  if (typeof window !== 'undefined') {
-    try {
-      const savedData = localStorage.getItem('grossePriseData');
-      if (savedData) {
-        const allGrossePriseData = JSON.parse(savedData);
-        // Convert timestamp strings back to Date objects
-        Object.keys(allGrossePriseData).forEach(sector => {
-          Object.keys(allGrossePriseData[sector] || {}).forEach(competitorId => {
-            const entry = allGrossePriseData[sector][competitorId];
-            if (entry.timestamp) {
-              entry.timestamp = new Date(entry.timestamp);
-            }
-          });
-        });
-        return allGrossePriseData;
-      }
-    } catch (error) {
-      console.error('Error loading grosse prise data:', error);
-    }
-  }
-  
-  return {};
-};
-
 export default function AdminCalculsLive() {
   const searchParams = useSearchParams();
+  const sectors = ['A', 'B', 'C', 'D', 'E', 'F'];
+  const { 
+    competitors: firestoreCompetitors, 
+    hourlyEntries: firestoreHourlyEntries, 
+    bigCatches: firestoreBigCatches,
+    saveCompetitor
+  } = useFirestore();
+  
   const [activeSector, setActiveSector] = useState(searchParams.get('sector') || 'A');
   const [searchQuery, setSearchQuery] = useState('');
   const [sortField, setSortField] = useState<string>('classement');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   const [filterType, setFilterType] = useState<string>('all');
-  
-  // Data states
-  const [competitorsBySector, setCompetitorsBySector] = useState<{ [sector: string]: Competitor[] }>({});
-  const [hourlyData, setHourlyData] = useState<{ [sector: string]: { [hour: number]: { [competitorId: string]: HourlyEntry } } }>({});
-  const [grossePriseData, setGrossePriseData] = useState<{ [sector: string]: { [competitorId: string]: GrossePriseEntry } }>({});
+  const [isOnline, setIsOnline] = useState(true);
 
-  const sectors = ['A', 'B', 'C', 'D', 'E', 'F'];
-
-  // Load initial data
+  // Set initial online status
   useEffect(() => {
-    const loadData = () => {
-      setCompetitorsBySector(getCompetitorsBySector());
-      setHourlyData(getHourlyData());
-      setGrossePriseData(getGrossePriseData());
-    };
+    setIsOnline(navigator.onLine);
     
-    loadData();
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+    
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
   }, []);
 
-  // Listen for real-time updates
-  useEffect(() => {
-    const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === 'competitors') {
-        setCompetitorsBySector(getCompetitorsBySector());
-      } else if (e.key === 'hourlyData') {
-        if (!e.newValue || e.newValue === 'null') {
-          // Data was reset - reload empty data
-          setHourlyData({});
-          return;
-        }
-        setHourlyData(getHourlyData());
-      } else if (e.key === 'grossePriseData') {
-        if (!e.newValue || e.newValue === 'null') {
-          // Data was reset - reload empty data
-          setGrossePriseData({});
-          return;
-        }
-        setGrossePriseData(getGrossePriseData());
+  // Convert Firebase data to local format for calculations
+  const hourlyDataByCompetitor = useMemo(() => {
+    const data: { [competitorId: string]: { [hour: number]: any } } = {};
+    
+    firestoreHourlyEntries.forEach(entry => {
+      if (!data[entry.competitorId]) {
+        data[entry.competitorId] = {};
       }
-    };
+      data[entry.competitorId][entry.hour] = {
+        fishCount: entry.fishCount,
+        totalWeight: entry.totalWeight,
+        status: entry.status,
+        timestamp: entry.timestamp?.toDate ? entry.timestamp.toDate() : new Date()
+      };
+    });
     
-    window.addEventListener('storage', handleStorageChange);
-    return () => window.removeEventListener('storage', handleStorageChange);
-  }, []);
+    return data;
+  }, [firestoreHourlyEntries]);
+  
+  const bigCatchesByCompetitor = useMemo(() => {
+    const data: { [competitorId: string]: any } = {};
+    
+    firestoreBigCatches.forEach(entry => {
+      data[entry.competitorId] = {
+        biggestCatch: entry.biggestCatch,
+        status: entry.status,
+        timestamp: entry.timestamp?.toDate ? entry.timestamp.toDate() : new Date()
+      };
+    });
+    
+    return data;
+  }, [firestoreBigCatches]);
 
   // Calculate live data for current sector
   const calculatedCompetitors = useMemo(() => {
-    const currentCompetitors = competitorsBySector[activeSector] || [];
-    const sectorHourlyData = hourlyData[activeSector] || {};
-    const sectorGrossePriseData = grossePriseData[activeSector] || {};
+    const currentCompetitors = firestoreCompetitors.filter(comp => comp.sector === activeSector);
     
     // Calculate totals for each competitor
     const calculated: CalculatedCompetitor[] = currentCompetitors.map(competitor => {
@@ -221,8 +129,7 @@ export default function AdminCalculsLive() {
       
       // Sum across all 7 hours
       for (let hour = 1; hour <= 7; hour++) {
-        const hourData = sectorHourlyData[hour] || {};
-        const entry = hourData[competitor.id];
+        const entry = hourlyDataByCompetitor[competitor.id]?.[hour];
         
         if (entry && ['locked_judge', 'locked_admin', 'offline_judge', 'offline_admin'].includes(entry.status)) {
           nbPrisesGlobal += entry.fishCount;
@@ -235,19 +142,19 @@ export default function AdminCalculsLive() {
       }
       
       // Get grosse prise
-      const grossePriseEntry = sectorGrossePriseData[competitor.id];
+      const grossePriseEntry = bigCatchesByCompetitor[competitor.id];
       const grossePrise = grossePriseEntry && ['locked_judge', 'locked_admin', 'offline_judge', 'offline_admin'].includes(grossePriseEntry.status) 
         ? grossePriseEntry.biggestCatch 
         : 0;
       
-      // Calculate points
+      // Calculate points: (Nb Prises × 50) + Poids Total
       const points = (nbPrisesGlobal * 50) + poidsTotal;
       
       return {
         id: competitor.id,
         boxNumber: competitor.boxNumber,
         boxCode: competitor.boxCode,
-        name: competitor.name,
+        name: competitor.fullName,
         equipe: competitor.equipe,
         sector: competitor.sector,
         nbPrisesGlobal,
@@ -260,10 +167,10 @@ export default function AdminCalculsLive() {
       };
     });
     
-    // Calculate sector totals for coefficient calculation
+    // Calculate sector total for coefficient calculation
     const sectorTotalNbPrises = calculated.reduce((sum, comp) => sum + comp.nbPrisesGlobal, 0);
     
-    // Calculate coefficients
+    // Calculate coefficients: (Points × Nb Prises) / Total Nb Prises Secteur
     calculated.forEach(comp => {
       if (sectorTotalNbPrises > 0) {
         comp.coefficient = (comp.points * comp.nbPrisesGlobal) / sectorTotalNbPrises;
@@ -272,37 +179,45 @@ export default function AdminCalculsLive() {
       }
     });
     
-    // Sort by points (desc), then by grosse prise (desc), then by earliest last valid entry
+    // Sort by Points (desc) for sector ranking
     const sorted = [...calculated].sort((a, b) => {
-      // Primary: Points (desc)
-      if (b.points !== a.points) {
-        return b.points - a.points;
-      }
-      
-      // Tie-breaker 1: Grosse prise (desc)
-      if (b.grossePrise !== a.grossePrise) {
-        return b.grossePrise - a.grossePrise;
-      }
-      
-      // Tie-breaker 2: Earliest last valid entry (asc)
-      if (a.lastValidEntry && b.lastValidEntry) {
-        return a.lastValidEntry.getTime() - b.lastValidEntry.getTime();
-      } else if (a.lastValidEntry) {
-        return -1; // a has entry, b doesn't - a wins
-      } else if (b.lastValidEntry) {
-        return 1; // b has entry, a doesn't - b wins
-      }
-      
-      return 0;
+      return b.points - a.points; // Sort by Points (desc)
     });
     
-    // Assign rankings
+    // Assign sector rankings (1-20)
     sorted.forEach((comp, index) => {
       comp.classement = index + 1;
     });
     
+    // Save calculated data back to Firebase
+    sorted.forEach(async (comp) => {
+      try {
+        const competitorData = {
+          id: comp.id,
+          sector: comp.sector,
+          boxNumber: comp.boxNumber,
+          boxCode: comp.boxCode,
+          fullName: comp.name,
+          equipe: comp.equipe,
+          photo: firestoreCompetitors.find(c => c.id === comp.id)?.photo || '',
+          status: 'active' as 'active' | 'inactive',
+          // Add calculated fields
+          nbPrisesGlobal: comp.nbPrisesGlobal,
+          poidsTotal: comp.poidsTotal,
+          grossePrise: comp.grossePrise,
+          points: comp.points,
+          coefficientSecteur: comp.coefficient,
+          classementSecteur: comp.classement
+        };
+        
+        await saveCompetitor(competitorData);
+      } catch (error) {
+        console.error('Error saving calculated data to Firebase:', error);
+      }
+    });
+    
     return sorted;
-  }, [competitorsBySector, hourlyData, grossePriseData, activeSector]);
+  }, [firestoreCompetitors, hourlyDataByCompetitor, bigCatchesByCompetitor, activeSector]);
 
   // Calculate sector totals
   const sectorTotals = useMemo((): SectorTotals => {
@@ -450,7 +365,7 @@ export default function AdminCalculsLive() {
       'Grosse prise (g)', 
       'Points', 
       'Coefficient secteur', 
-      'Classement'
+      'Classement Secteur'
     ];
     
     const rows = filteredCompetitors.map(comp => [
@@ -497,6 +412,11 @@ export default function AdminCalculsLive() {
             <p className="text-gray-600 dark:text-gray-300">Totaux et classements en temps réel par secteur</p>
           </div>
           <div className="flex items-center space-x-2">
+            {isOnline ? (
+              <Wifi className="w-4 h-4 text-green-600" />
+            ) : (
+              <WifiOff className="w-4 h-4 text-red-600" />
+            )}
             <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse" />
             <span className="text-sm font-medium text-green-600">Mise à jour automatique</span>
           </div>
@@ -635,10 +555,10 @@ export default function AdminCalculsLive() {
               </th>
               <th 
                 className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700"
-                onClick={() => handleSort('classement')}
+                onClick={() => handleSort('classementSecteur')}
               >
                 <div className="flex items-center space-x-1">
-                  <span>Classement</span>
+                  <span>Classement Secteur</span>
                   <ArrowUpDown className="w-3 h-3" />
                 </div>
               </th>
@@ -673,47 +593,53 @@ export default function AdminCalculsLive() {
                   </td>
                   
                   {/* Nb Prises global */}
-                  <td className="px-4 py-4 whitespace-nowrap">
+                  <td className="px-4 py-4 whitespace-nowrap text-center">
                     <span className="font-semibold text-gray-900 dark:text-gray-100">
                       {competitor.nbPrisesGlobal}
                     </span>
                   </td>
                   
                   {/* Poids Total global */}
-                  <td className="px-4 py-4 whitespace-nowrap">
+                  <td className="px-4 py-4 whitespace-nowrap text-center">
                     <span className="font-semibold text-gray-900 dark:text-gray-100">
                       {formatNumber(competitor.poidsTotal)}
                     </span>
                   </td>
                   
                   {/* Grosse prise */}
-                  <td className="px-4 py-4 whitespace-nowrap">
+                  <td className="px-4 py-4 whitespace-nowrap text-center">
                     <span className="font-semibold text-gray-900 dark:text-gray-100">
                       {competitor.grossePrise > 0 ? formatNumber(competitor.grossePrise) : '—'}
                     </span>
                   </td>
                   
                   {/* Points */}
-                  <td className="px-4 py-4 whitespace-nowrap">
+                  <td className="px-4 py-4 whitespace-nowrap text-center">
                     <span className="font-bold text-lg text-ocean-600 dark:text-ocean-400">
                       {formatNumber(competitor.points)}
                     </span>
                   </td>
                   
                   {/* Coefficient secteur */}
-                  <td className="px-4 py-4 whitespace-nowrap">
+                  <td className="px-4 py-4 whitespace-nowrap text-center">
                     <span className="font-mono text-sm text-gray-800 dark:text-gray-200">
                       {formatCoefficient(competitor.coefficient)}
                     </span>
                   </td>
                   
                   {/* Classement */}
-                  <td className="px-4 py-4 whitespace-nowrap">
-                    <div className="flex items-center space-x-2">
-                      {getRankIcon(competitor.classement)}
-                      <span className="font-bold text-gray-900 dark:text-gray-100">
-                        {competitor.classement}
-                      </span>
+                  <td className="px-4 py-4 whitespace-nowrap text-center">
+                    <div className="flex items-center justify-center space-x-1">
+                      {competitor.nbPrisesGlobal === 0 && competitor.poidsTotal === 0 && competitor.grossePrise === 0 ? (
+                        <span className="text-gray-400 dark:text-gray-500">—</span>
+                      ) : (
+                        <>
+                          {competitor.classement <= 3 && getRankIcon(competitor.classement)}
+                          <span className="font-bold text-gray-900 dark:text-gray-100">
+                            {competitor.classement}
+                          </span>
+                        </>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -727,28 +653,28 @@ export default function AdminCalculsLive() {
               </td>
               <td className="px-4 py-4 text-gray-500 dark:text-gray-400">—</td>
               <td className="px-4 py-4 text-gray-500 dark:text-gray-400">—</td>
-              <td className="px-4 py-4">
+              <td className="px-4 py-4 text-center">
                 <span className="font-bold text-gray-900 dark:text-gray-100">
                   {formatNumber(sectorTotals.nbPrisesGlobal)}
                 </span>
               </td>
-              <td className="px-4 py-4">
+              <td className="px-4 py-4 text-center">
                 <span className="font-bold text-gray-900 dark:text-gray-100">
                   {formatNumber(sectorTotals.poidsTotal)}
                 </span>
               </td>
-              <td className="px-4 py-4">
+              <td className="px-4 py-4 text-center">
                 <span className="font-bold text-gray-900 dark:text-gray-100">
                   {sectorTotals.grossePriseMax > 0 ? formatNumber(sectorTotals.grossePriseMax) : '—'}
                 </span>
               </td>
-              <td className="px-4 py-4">
+              <td className="px-4 py-4 text-center">
                 <span className="font-bold text-ocean-600 dark:text-ocean-400">
                   {formatNumber(sectorTotals.points)}
                 </span>
               </td>
-              <td className="px-4 py-4 text-gray-500 dark:text-gray-400">—</td>
-              <td className="px-4 py-4 text-gray-500 dark:text-gray-400">—</td>
+              <td className="px-4 py-4 text-center text-gray-500 dark:text-gray-400">—</td>
+              <td className="px-4 py-4 text-center text-gray-500 dark:text-gray-400">—</td>
             </tr>
           </tbody>
         </table>
