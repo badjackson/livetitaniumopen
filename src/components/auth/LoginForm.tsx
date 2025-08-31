@@ -21,13 +21,6 @@ export default function LoginForm() {
     setIsLoading(true);
     setError('');
     
-    // Check if Firebase is properly configured
-    if (!process.env.NEXT_PUBLIC_FB_API_KEY || process.env.NEXT_PUBLIC_FB_API_KEY === 'your_api_key_here') {
-      setError('Firebase n\'est pas configuré. Veuillez configurer les variables d\'environnement.');
-      setIsLoading(false);
-      return;
-    }
-    
     // Use Firebase Auth
     const result = await loginWithFirebase(username, password);
     

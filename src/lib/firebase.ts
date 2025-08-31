@@ -1,32 +1,6 @@
-import { initializeApp } from 'firebase/app';
-import { getAuth } from 'firebase/auth';
-import {
-  initializeFirestore,
-  persistentLocalCache,
-  persistentMultipleTabManager,
-} from 'firebase/firestore';
-
-const firebaseConfig = {
-  apiKey: process.env.NEXT_PUBLIC_FB_API_KEY || "AIzaSyAb72OZaFpAZPTcnyYbXE4uYAP03s3QHI0",
-  authDomain: process.env.NEXT_PUBLIC_FB_AUTH_DOMAIN || "titanium-f7b50.firebaseapp.com",
-  projectId: process.env.NEXT_PUBLIC_FB_PROJECT_ID || "titanium-f7b50",
-  storageBucket: process.env.NEXT_PUBLIC_FB_STORAGE_BUCKET || "titanium-f7b50.firebasestorage.app",
-  messagingSenderId: process.env.NEXT_PUBLIC_FB_MSG_SENDER_ID || "30259124231",
-  appId: process.env.NEXT_PUBLIC_FB_APP_ID || "1:30259124231:web:ebaad04109b0400f9af2a2",
-};
-
-export const app = initializeApp(firebaseConfig);
-export const auth = getAuth(app);
-
-// Initialize Firestore with error handling
-export let db;
-
-try {
-  db = initializeFirestore(app, {
-    localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
-  });
-} catch (error) {
-  console.warn('Firestore initialization failed, using fallback:', error);
-  // Fallback for development
-  db = initializeFirestore(app, {});
-}
+  storageBucket: "titanium-open-2024.appspot.com",
+  projectId: "titanium-open-2024",
+  messagingSenderId: "987654321",
+  authDomain: "titanium-open-2024.firebaseapp.com",
+  appId: "1:987654321:web:abc123def456"
+  apiKey: "AIzaSyBx1234567890abcdefghijk",
