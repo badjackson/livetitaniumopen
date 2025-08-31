@@ -4,5 +4,7 @@
   "/_not-found/page": "app/_not-found/page.js",
   "/judge/page": "app/judge/page.js",
   "/admin/grosse-prise/page": "app/admin/grosse-prise/page.js",
-  "/admin/page": "app/admin/page.js"
+  "/admin/page": "app/admin/page.js",
+  "/admin/prises/page": "app/admin/prises/page.js",
+  "/admin/competiteurs/page": "app/admin/competiteurs/page.js"
 }

@@ -62,25 +62,26 @@ interface CalculatedCompetitor {
 }
 
 export default function LiveGeneralRanking() {
-  const { competitors, hourlyEntries, bigCatches, auditLog } = useFirestore();
+  const { 
+    competitors: firestoreCompetitors, 
+    hourlyEntries: firestoreHourlyEntries, 
+    bigCatches: firestoreBigCatches,
+    publicAppearanceSettings: firestorePublicSettings,
+    auditLog 
+  } = useFirestore();
   const [searchQuery, setSearchQuery] = useState('');
   const [sectorFilter, setSectorFilter] = useState<string>('all');
   const [sortField, setSortField] = useState<string>('classementGeneral');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   const [isExpanded, setIsExpanded] = useState(false);
   
-  // Data states
-  const [allCompetitors, setAllCompetitors] = useState<Competitor[]>([]);
-  const [hourlyData, setHourlyData] = useState<any>({});
-  const [grossePriseData, setGrossePriseData] = useState<any>({});
-
   const sectors = ['A', 'B', 'C', 'D', 'E', 'F'];
 
   // Convert Firebase data to local format for calculations
   const hourlyDataByCompetitor = useMemo(() => {
     const data: { [competitorId: string]: { [hour: number]: any } } = {};
     
-    hourlyEntries.forEach(entry => {
+    firestoreHourlyEntries.forEach(entry => {
       if (!data[entry.competitorId]) {
         data[entry.competitorId] = {};
       }
@@ -93,12 +94,12 @@ export default function LiveGeneralRanking() {
     });
     
     return data;
-  }, [hourlyEntries]);
+  }, [firestoreHourlyEntries]);
   
   const bigCatchesByCompetitor = useMemo(() => {
     const data: { [competitorId: string]: any } = {};
     
-    bigCatches.forEach(entry => {
+    firestoreBigCatches.forEach(entry => {
       data[entry.competitorId] = {
         biggestCatch: entry.biggestCatch,
         status: entry.status,
@@ -107,7 +108,7 @@ export default function LiveGeneralRanking() {
     });
     
     return data;
-  }, [bigCatches]);
+  }, [firestoreBigCatches]);
 
   // Calculate live data for all competitors
   const calculatedCompetitors = useMemo(() => {
@@ -115,7 +116,7 @@ export default function LiveGeneralRanking() {
     const competitorsBySector: { [sector: string]: CalculatedCompetitor[] } = {};
     
     sectors.forEach(sector => {
-      const sectorCompetitors = competitors.filter(comp => comp.sector === sector);
+      const sectorCompetitors = firestoreCompetitors.filter(comp => comp.sector === sector);
       
       // Calculate totals for each competitor in this sector
       const sectorCalculated: CalculatedCompetitor[] = sectorCompetitors.map(competitor => {
@@ -149,7 +150,7 @@ export default function LiveGeneralRanking() {
         return {
           id: competitor.id,
           boxNumber: competitor.boxNumber,
-          boxCode: `${competitor.sector}${String(competitor.boxNumber).padStart(2, '0')}`,
+          boxCode: competitor.boxCode,
           name: competitor.fullName,
           equipe: competitor.equipe,
           sector: competitor.sector,
@@ -271,7 +272,7 @@ export default function LiveGeneralRanking() {
     });
     
     return [...nonZeroCompetitors, ...zeroCoeffCompetitors];
-  }, [competitors, hourlyDataByCompetitor, bigCatchesByCompetitor]);
+  }, [firestoreCompetitors, hourlyDataByCompetitor, bigCatchesByCompetitor]);
 
   // Apply sorting
   const sortedCompetitors = useMemo(() => {
@@ -432,8 +433,8 @@ export default function LiveGeneralRanking() {
       second: '2-digit'
     });
 
-    const logoHtml = publicAppearanceSettings?.logos?.light || publicAppearanceSettings?.logos?.dark
-      ? `<img src="${publicAppearanceSettings.logos.light || publicAppearanceSettings.logos.dark}" alt="Titanium Tunisia Open" style="height: 80px; margin: 0 auto 20px auto; display: block;" />`
+    const logoHtml = firestorePublicSettings?.logos?.light || firestorePublicSettings?.logos?.dark
+      ? `<img src="${firestorePublicSettings.logos.light || firestorePublicSettings.logos.dark}" alt="Titanium Tunisia Open" style="height: 80px; margin: 0 auto 20px auto; display: block;" />`
       : `<div style="text-align: center; margin-bottom: 20px;">
            <h1 style="color: #0ea5e9; font-size: 24px; margin: 0;">Titanium Tunisia Open</h1>
          </div>`;
