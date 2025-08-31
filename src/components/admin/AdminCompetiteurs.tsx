@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
+import { useFirestore } from '@/components/providers/FirestoreSyncProvider';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import Button from '@/components/ui/Button';
@@ -23,19 +24,6 @@ import {
 } from 'lucide-react';
 import { formatTime } from '@/lib/utils';
 
-interface Competitor {
-  id: string;
-  sector: string;
-  boxNumber: number;
-  boxCode: string;
-  fullName: string;
-  equipe: string;
-  photo: string;
-  lastUpdate?: Date;
-  source: 'Admin';
-  status?: 'active' | 'inactive';
-}
-
 // Generate available box numbers for each sector
 const generateAvailableBoxes = (sector: string, takenBoxes: number[]): { value: number; label: string }[] => {
   const boxes = [];
@@ -51,10 +39,10 @@ const generateAvailableBoxes = (sector: string, takenBoxes: number[]): { value: 
 };
 
 export default function AdminCompetiteurs() {
+  const { competitors, saveCompetitor, deleteCompetitor } = useFirestore();
   const [activeSector, setActiveSector] = useState('A');
   const [searchQuery, setSearchQuery] = useState('');
   const [isEditorCollapsed, setIsEditorCollapsed] = useState(false);
-  const [competitors, setCompetitors] = useState<{ [sector: string]: Competitor[] }>({});
   
   // Editor state
   const [selectedCompetitorId, setSelectedCompetitorId] = useState<string | null>(null);
@@ -73,8 +61,10 @@ export default function AdminCompetiteurs() {
 
   const sectors = ['A', 'B', 'C', 'D', 'E', 'F'];
 
-  // Official competitors list - 120 competitors exactly as provided
+  // Initialize competitors in Firebase if empty
   useEffect(() => {
+    if (competitors.length > 0) return; // Already have data
+    
     const officialCompetitors = [
       // Sector A
       { sector: 'A', boxNumber: 1, fullName: 'Sami Said', equipe: 'OPEN' },
@@ -209,45 +199,58 @@ export default function AdminCompetiteurs() {
       { sector: 'F', boxNumber: 20, fullName: 'Nejah Abdeljawed', equipe: 'TST' }
     ];
 
-    // Convert to the required format
-    const initialCompetitors: { [sector: string]: Competitor[] } = {};
-    
-    officialCompetitors.forEach(comp => {
-      if (!initialCompetitors[comp.sector]) {
-        initialCompetitors[comp.sector] = [];
+    // Save each competitor to Firebase
+    const initializeCompetitors = async () => {
+      for (const comp of officialCompetitors) {
+        const competitorData = {
+          id: `comp-${comp.sector.toLowerCase()}-${comp.boxNumber}`,
+          sector: comp.sector,
+          boxNumber: comp.boxNumber,
+          boxCode: `${comp.sector}${String(comp.boxNumber).padStart(2, '0')}`,
+          fullName: comp.fullName,
+          equipe: comp.equipe,
+          photo: `https://images.pexels.com/photos/${1000000 + Math.floor(Math.random() * 1000000)}/pexels-photo.jpeg?auto=compress&cs=tinysrgb&w=150&h=150`,
+          status: 'active'
+        };
+        
+        try {
+          await saveCompetitor(competitorData);
+        } catch (error) {
+          console.error('Error saving competitor:', error);
+        }
       }
-      
-      initialCompetitors[comp.sector].push({
-        id: `comp-${comp.sector.toLowerCase()}-${comp.boxNumber}`,
-        sector: comp.sector,
-        boxNumber: comp.boxNumber,
-        boxCode: `${comp.sector}${String(comp.boxNumber).padStart(2, '0')}`,
-        fullName: comp.fullName,
-        equipe: comp.equipe,
-        photo: `https://images.pexels.com/photos/${1000000 + Math.floor(Math.random() * 1000000)}/pexels-photo.jpeg?auto=compress&cs=tinysrgb&w=150&h=150`,
-        lastUpdate: new Date(),
-        source: 'Admin',
-        status: 'active'
-      });
-    });
+    };
 
-    setCompetitors(initialCompetitors);
-    
-    // Store in localStorage for immediate updates to Judge and Public
-    if (typeof window !== 'undefined') {
-      const allCompetitors = Object.values(initialCompetitors).flat();
-      localStorage.setItem('competitors', JSON.stringify(allCompetitors));
-      
-      // Trigger storage event for live updates
-      window.dispatchEvent(new StorageEvent('storage', {
-        key: 'competitors',
-        newValue: JSON.stringify(allCompetitors)
-      }));
-    }
-  }, []);
+    initializeCompetitors();
+  }, [competitors, saveCompetitor]);
+
+  // Group competitors by sector for display
+  const competitorsBySector = useMemo(() => {
+    const grouped: { [sector: string]: any[] } = {};
+    competitors.forEach(comp => {
+      if (!grouped[comp.sector]) {
+        grouped[comp.sector] = [];
+      }
+      grouped[comp.sector].push(comp);
+    });
+    return grouped;
+  }, [competitors]);
 
   // Get current sector competitors
-  const currentCompetitors = competitors[activeSector] || [];
+  const currentCompetitors = competitorsBySector[activeSector] || [];
+
+  // Get taken box numbers for current sector
+  const takenBoxNumbers = currentCompetitors.map(c => c.boxNumber);
+
+  // Get available boxes for form
+  const availableBoxes = useMemo(() => {
+    if (isEditing && selectedCompetitor) {
+      // When editing, include current box number
+      const otherTakenBoxes = takenBoxNumbers.filter(box => box !== selectedCompetitor.boxNumber);
+      return generateAvailableBoxes(formData.sector, otherTakenBoxes);
+    }
+    return generateAvailableBoxes(formData.sector, competitorsBySector[formData.sector]?.map(c => c.boxNumber) || []);
+  }, [formData.sector, competitorsBySector, isEditing, selectedCompetitor, takenBoxNumbers]);
 
   // Filter competitors
   const filteredCompetitors = useMemo(() => {
@@ -265,19 +268,6 @@ export default function AdminCompetiteurs() {
   const selectedCompetitor = selectedCompetitorId 
     ? currentCompetitors.find(c => c.id === selectedCompetitorId)
     : null;
-
-  // Get taken box numbers for current sector
-  const takenBoxNumbers = currentCompetitors.map(c => c.boxNumber);
-
-  // Get available boxes for form
-  const availableBoxes = useMemo(() => {
-    if (isEditing && selectedCompetitor) {
-      // When editing, include current box number
-      const otherTakenBoxes = takenBoxNumbers.filter(box => box !== selectedCompetitor.boxNumber);
-      return generateAvailableBoxes(formData.sector, otherTakenBoxes);
-    }
-    return generateAvailableBoxes(formData.sector, competitors[formData.sector]?.map(c => c.boxNumber) || []);
-  }, [formData.sector, competitors, isEditing, selectedCompetitor, takenBoxNumbers]);
 
   const getSectorColor = (sector: string) => {
     const colors: { [key: string]: string } = {
@@ -337,7 +327,7 @@ export default function AdminCompetiteurs() {
     }
 
     // Check for duplicate box number
-    const existingCompetitor = competitors[formData.sector]?.find(c => 
+    const existingCompetitor = competitorsBySector[formData.sector]?.find(c => 
       c.boxNumber === formData.boxNumber && c.id !== selectedCompetitorId
     );
     if (existingCompetitor) {
@@ -353,67 +343,20 @@ export default function AdminCompetiteurs() {
 
     setIsSaving(true);
 
-    const competitorData: Competitor = {
-      id: selectedCompetitorId || `comp-${formData.sector.toLowerCase()}-${Date.now()}`,
+    const competitorData = {
+      id: selectedCompetitorId || `comp-${formData.sector.toLowerCase()}-${formData.boxNumber}`,
       sector: formData.sector,
       boxNumber: formData.boxNumber,
       boxCode: `${formData.sector}${String(formData.boxNumber).padStart(2, '0')}`,
       fullName: formData.fullName,
       equipe: formData.equipe,
       photo: formData.photo || `https://images.pexels.com/photos/${1000000 + Math.floor(Math.random() * 1000000)}/pexels-photo.jpeg?auto=compress&cs=tinysrgb&w=150&h=150`,
-      lastUpdate: new Date(),
-      source: 'Admin',
       status: 'active'
     };
 
-    // Simulate save
-    setTimeout(() => {
-      setCompetitors(prev => {
-        const updated = { ...prev };
-        
-        if (isEditing && selectedCompetitor) {
-          // Remove from old sector if sector changed
-          if (selectedCompetitor.sector !== formData.sector) {
-            updated[selectedCompetitor.sector] = updated[selectedCompetitor.sector].filter(c => c.id !== selectedCompetitorId);
-          }
-          
-          // Update in new sector
-          if (!updated[formData.sector]) updated[formData.sector] = [];
-          const existingIndex = updated[formData.sector].findIndex(c => c.id === selectedCompetitorId);
-          if (existingIndex >= 0) {
-            updated[formData.sector][existingIndex] = competitorData;
-          } else {
-            updated[formData.sector].push(competitorData);
-          }
-        } else {
-          // Add new
-          if (!updated[formData.sector]) updated[formData.sector] = [];
-          updated[formData.sector].push(competitorData);
-        }
-
-        return updated;
-      });
-
-      // Update localStorage for other components
-      if (typeof window !== 'undefined') {
-        const allCompetitors = Object.values({
-          ...competitors,
-          [formData.sector]: formData.sector === activeSector 
-            ? (competitors[formData.sector] || []).map(c => c.id === selectedCompetitorId ? competitorData : c).concat(selectedCompetitorId ? [] : [competitorData])
-            : (competitors[formData.sector] || []).concat([competitorData])
-        }).flat();
-        localStorage.setItem('competitors', JSON.stringify(allCompetitors));
-        
-        // Create backup in sessionStorage for extra safety
-        sessionStorage.setItem('competitorsBackup', JSON.stringify(allCompetitors));
-        
-        // Trigger storage event for live updates
-        window.dispatchEvent(new StorageEvent('storage', {
-          key: 'competitors',
-          newValue: JSON.stringify(allCompetitors)
-        }));
-      }
-
+    try {
+      await saveCompetitor(competitorData);
+      
       setIsSaving(false);
       setSelectedCompetitorId(null);
       setIsEditing(false);
@@ -426,7 +369,11 @@ export default function AdminCompetiteurs() {
       });
       setPhotoPreview(null);
       setErrors({});
-    }, 800);
+    } catch (error) {
+      console.error('Error saving competitor:', error);
+      setIsSaving(false);
+      alert('Erreur lors de la sauvegarde du compétiteur');
+    }
   };
 
   const handleDelete = async () => {
@@ -434,28 +381,9 @@ export default function AdminCompetiteurs() {
 
     setIsSaving(true);
 
-    setTimeout(() => {
-      setCompetitors(prev => ({
-        ...prev,
-        [selectedCompetitor.sector]: prev[selectedCompetitor.sector].filter(c => c.id !== selectedCompetitorId)
-      }));
-
-      // Update localStorage
-      if (typeof window !== 'undefined') {
-        const updatedCompetitors = {
-          ...competitors,
-          [selectedCompetitor.sector]: competitors[selectedCompetitor.sector].filter(c => c.id !== selectedCompetitorId)
-        };
-        const allCompetitors = Object.values(updatedCompetitors).flat();
-        localStorage.setItem('competitors', JSON.stringify(allCompetitors));
-        
-        // Trigger storage event for live updates
-        window.dispatchEvent(new StorageEvent('storage', {
-          key: 'competitors',
-          newValue: JSON.stringify(allCompetitors)
-        }));
-      }
-
+    try {
+      await deleteCompetitor(selectedCompetitor.id);
+      
       setIsSaving(false);
       setSelectedCompetitorId(null);
       setIsEditing(false);
@@ -468,7 +396,11 @@ export default function AdminCompetiteurs() {
         photo: ''
       });
       setPhotoPreview(null);
-    }, 500);
+    } catch (error) {
+      console.error('Error deleting competitor:', error);
+      setIsSaving(false);
+      alert('Erreur lors de la suppression du compétiteur');
+    }
   };
 
   const handleCancel = () => {
@@ -505,8 +437,8 @@ export default function AdminCompetiteurs() {
       comp.boxCode,
       comp.fullName,
       comp.equipe,
-      comp.lastUpdate ? formatTime(comp.lastUpdate) : '',
-      comp.source,
+      comp.updatedAt ? formatTime(comp.updatedAt.toDate()) : '',
+      'Admin',
       comp.status || 'active'
     ]);
 
@@ -515,11 +447,13 @@ export default function AdminCompetiteurs() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `competiteurs-${activeSector}.csv`;
+    a.download = `competitors-sector-${activeSector}.csv`;
     a.click();
+    URL.revokeObjectURL(url);
   };
 
   return (
+    <>
     <div className="h-screen flex flex-col">
       {/* Header */}
       <div className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 px-6 py-4">
@@ -542,7 +476,7 @@ export default function AdminCompetiteurs() {
               onClick={() => setActiveSector(sector)}
               className={activeSector === sector ? getSectorColor(sector) : ''}
             >
-              Secteur {sector} ({competitors[sector]?.length || 0})
+              Secteur {sector} ({competitorsBySector[sector]?.length || 0})
             </Button>
           ))}
         </div>
@@ -655,9 +589,9 @@ export default function AdminCompetiteurs() {
                         </span>
                       </td>
                       <td className="px-4 py-4 whitespace-nowrap">
-                        {competitor.lastUpdate ? (
+                        {competitor.updatedAt ? (
                           <span className="font-mono text-sm text-gray-600 dark:text-gray-300">
-                            {formatTime(competitor.lastUpdate)}
+                            {formatTime(competitor.updatedAt.toDate())}
                           </span>
                         ) : (
                           <span className="text-gray-400 dark:text-gray-500">-</span>
@@ -665,7 +599,7 @@ export default function AdminCompetiteurs() {
                       </td>
                       <td className="px-4 py-4 whitespace-nowrap">
                         <Badge variant="outline" className="text-xs">
-                          {competitor.source}
+                          Admin
                         </Badge>
                       </td>
                       <td className="px-4 py-4 whitespace-nowrap">
@@ -913,5 +847,6 @@ export default function AdminCompetiteurs() {
         </div>
       )}
     </div>
+    </>
   );
 }
