@@ -1,6 +1,9 @@
 'use client';
 
+'use client';
+
 import { useState, useEffect, useMemo } from 'react';
+import { useFirestore } from '@/components/providers/FirestoreSyncProvider';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import Button from '@/components/ui/Button';
@@ -13,37 +16,13 @@ import {
   Medal,
   Award,
   Wifi,
-  WifiOff
+  WifiOff,
+  Eye,
+  EyeOff
 } from 'lucide-react';
-import { formatWeight, formatNumber, formatTime } from '@/lib/utils';
-
-interface Competitor {
-  id: string;
-  boxNumber: number;
-  boxCode: string;
-  name: string;
-  equipe: string;
-  sector: string;
-}
-
-interface HourlyEntry {
-  competitorId: string;
-  boxNumber: number;
-  fishCount: number;
-  totalWeight: number;
-  status: string;
-  timestamp?: Date;
-  source: 'Judge' | 'Admin';
-}
-
-interface GrossePriseEntry {
-  competitorId: string;
-  boxNumber: number;
-  biggestCatch: number;
-  status: string;
-  timestamp?: Date;
-  source: 'Judge' | 'Admin';
-}
+import { motion, AnimatePresence } from 'framer-motion';
+import { formatNumber } from '@/lib/utils';
+import { cn } from '@/lib/utils';
 
 interface CalculatedCompetitor {
   id: string;
@@ -62,135 +41,71 @@ interface CalculatedCompetitor {
   lastValidEntry?: Date;
 }
 
-// Get competitors from localStorage
-const getAllCompetitors = (): Competitor[] => {
-  if (typeof window !== 'undefined') {
-    try {
-      const savedCompetitors = localStorage.getItem('competitors');
-      if (savedCompetitors) {
-        const allCompetitors = JSON.parse(savedCompetitors);
-        return allCompetitors.map((comp: any) => ({
-          id: comp.id,
-          boxNumber: comp.boxNumber,
-          boxCode: comp.boxCode,
-          name: comp.fullName,
-          equipe: comp.equipe,
-          sector: comp.sector,
-        }));
-      }
-    } catch (error) {
-      console.error('Error loading competitors:', error);
-    }
-  }
-  
-  return [];
-};
-
-// Get hourly data from localStorage
-const getHourlyData = (): { [sector: string]: { [hour: number]: { [competitorId: string]: HourlyEntry } } } => {
-  if (typeof window !== 'undefined') {
-    try {
-      const savedData = localStorage.getItem('hourlyData');
-      if (savedData) {
-        const allHourlyData = JSON.parse(savedData);
-        // Convert timestamp strings back to Date objects
-        Object.keys(allHourlyData).forEach(sector => {
-          Object.keys(allHourlyData[sector] || {}).forEach(hour => {
-            Object.keys(allHourlyData[sector][hour] || {}).forEach(competitorId => {
-              const entry = allHourlyData[sector][hour][competitorId];
-              if (entry.timestamp) {
-                entry.timestamp = new Date(entry.timestamp);
-              }
-            });
-          });
-        });
-        return allHourlyData;
-      }
-    } catch (error) {
-      console.error('Error loading hourly data:', error);
-    }
-  }
-  
-  return {};
-};
-
-// Get grosse prise data from localStorage
-const getGrossePriseData = (): { [sector: string]: { [competitorId: string]: GrossePriseEntry } } => {
-  if (typeof window !== 'undefined') {
-    try {
-      const savedData = localStorage.getItem('grossePriseData');
-      if (savedData) {
-        const allGrossePriseData = JSON.parse(savedData);
-        // Convert timestamp strings back to Date objects
-        Object.keys(allGrossePriseData).forEach(sector => {
-          Object.keys(allGrossePriseData[sector] || {}).forEach(competitorId => {
-            const entry = allGrossePriseData[sector][competitorId];
-            if (entry.timestamp) {
-              entry.timestamp = new Date(entry.timestamp);
-            }
-          });
-        });
-        return allGrossePriseData;
-      }
-    } catch (error) {
-      console.error('Error loading grosse prise data:', error);
-    }
-  }
-  
-  return {};
-};
-
 export default function AdminClassementGeneral() {
-  const [isOnline, setIsOnline] = useState(true);
+  const { 
+    competitors: firestoreCompetitors, 
+    hourlyEntries: firestoreHourlyEntries, 
+    bigCatches: firestoreBigCatches,
+    publicAppearanceSettings: firestorePublicSettings,
+    auditLog 
+  } = useFirestore();
+  
+  const sectors = ['A', 'B', 'C', 'D', 'E', 'F'];
   const [searchQuery, setSearchQuery] = useState('');
+  const [sectorFilter, setSectorFilter] = useState<string>('all');
   const [sortField, setSortField] = useState<string>('classementGeneral');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
-  const [sectorFilter, setSectorFilter] = useState<string>('all');
-  const [filterType, setFilterType] = useState<string>('all');
-  
-  // Data states
-  const [allCompetitors, setAllCompetitors] = useState<Competitor[]>([]);
-  const [hourlyData, setHourlyData] = useState<{ [sector: string]: { [hour: number]: { [competitorId: string]: HourlyEntry } } }>({});
-  const [grossePriseData, setGrossePriseData] = useState<{ [sector: string]: { [competitorId: string]: GrossePriseEntry } }>({});
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [isOnline, setIsOnline] = useState(true);
 
-  const sectors = ['A', 'B', 'C', 'D', 'E', 'F'];
-
-  // Load initial data
+  // Set initial online status
   useEffect(() => {
-    const loadData = () => {
-      setAllCompetitors(getAllCompetitors());
-      setHourlyData(getHourlyData());
-      setGrossePriseData(getGrossePriseData());
-    };
+    setIsOnline(navigator.onLine);
     
-    loadData();
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+    
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
   }, []);
 
-  // Listen for real-time updates
-  useEffect(() => {
-    const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === 'competitors') {
-        setAllCompetitors(getAllCompetitors());
-      } else if (e.key === 'hourlyData') {
-        if (!e.newValue || e.newValue === 'null') {
-          // Data was reset - reload empty data
-          setHourlyData({});
-          return;
-        }
-        setHourlyData(getHourlyData());
-      } else if (e.key === 'grossePriseData') {
-        if (!e.newValue || e.newValue === 'null') {
-          // Data was reset - reload empty data
-          setGrossePriseData({});
-          return;
-        }
-        setGrossePriseData(getGrossePriseData());
+  // Convert Firebase data to local format for calculations
+  const hourlyDataByCompetitor = useMemo(() => {
+    const data: { [competitorId: string]: { [hour: number]: any } } = {};
+    
+    firestoreHourlyEntries.forEach(entry => {
+      if (!data[entry.competitorId]) {
+        data[entry.competitorId] = {};
       }
-    };
+      data[entry.competitorId][entry.hour] = {
+        fishCount: entry.fishCount,
+        totalWeight: entry.totalWeight,
+        status: entry.status,
+        timestamp: entry.timestamp?.toDate ? entry.timestamp.toDate() : new Date()
+      };
+    });
     
-    window.addEventListener('storage', handleStorageChange);
-    return () => window.removeEventListener('storage', handleStorageChange);
-  }, []);
+    return data;
+  }, [firestoreHourlyEntries]);
+  
+  const bigCatchesByCompetitor = useMemo(() => {
+    const data: { [competitorId: string]: any } = {};
+    
+    firestoreBigCatches.forEach(entry => {
+      data[entry.competitorId] = {
+        biggestCatch: entry.biggestCatch,
+        status: entry.status,
+        timestamp: entry.timestamp?.toDate ? entry.timestamp.toDate() : new Date()
+      };
+    });
+    
+    return data;
+  }, [firestoreBigCatches]);
 
   // Calculate live data for all competitors
   const calculatedCompetitors = useMemo(() => {
@@ -198,9 +113,7 @@ export default function AdminClassementGeneral() {
     const competitorsBySector: { [sector: string]: CalculatedCompetitor[] } = {};
     
     sectors.forEach(sector => {
-      const sectorCompetitors = allCompetitors.filter(comp => comp.sector === sector);
-      const sectorHourlyData = hourlyData[sector] || {};
-      const sectorGrossePriseData = grossePriseData[sector] || {};
+      const sectorCompetitors = firestoreCompetitors.filter(comp => comp.sector === sector);
       
       // Calculate totals for each competitor in this sector
       const sectorCalculated: CalculatedCompetitor[] = sectorCompetitors.map(competitor => {
@@ -210,8 +123,7 @@ export default function AdminClassementGeneral() {
         
         // Sum across all 7 hours
         for (let hour = 1; hour <= 7; hour++) {
-          const hourData = sectorHourlyData[hour] || {};
-          const entry = hourData[competitor.id];
+          const entry = hourlyDataByCompetitor[competitor.id]?.[hour];
           
           if (entry && ['locked_judge', 'locked_admin', 'offline_judge', 'offline_admin'].includes(entry.status)) {
             nbPrisesGlobal += entry.fishCount;
@@ -224,19 +136,19 @@ export default function AdminClassementGeneral() {
         }
         
         // Get grosse prise
-        const grossePriseEntry = sectorGrossePriseData[competitor.id];
+        const grossePriseEntry = bigCatchesByCompetitor[competitor.id];
         const grossePrise = grossePriseEntry && ['locked_judge', 'locked_admin', 'offline_judge', 'offline_admin'].includes(grossePriseEntry.status) 
           ? grossePriseEntry.biggestCatch 
           : 0;
         
-        // Calculate points
+        // Calculate points: (Nb Prises global × 50) + Poids Total global
         const points = (nbPrisesGlobal * 50) + poidsTotal;
         
         return {
           id: competitor.id,
           boxNumber: competitor.boxNumber,
           boxCode: competitor.boxCode,
-          name: competitor.name,
+          name: competitor.fullName,
           equipe: competitor.equipe,
           sector: competitor.sector,
           nbPrisesGlobal,
@@ -253,7 +165,7 @@ export default function AdminClassementGeneral() {
       // Calculate sector total for coefficient calculation
       const sectorTotalNbPrises = sectorCalculated.reduce((sum, comp) => sum + comp.nbPrisesGlobal, 0);
       
-      // Calculate coefficients
+      // Calculate coefficients: (Points × Nb Prises global) / (Σ Nb Prises global secteur)
       sectorCalculated.forEach(comp => {
         if (sectorTotalNbPrises > 0) {
           comp.coefficientSecteur = (comp.points * comp.nbPrisesGlobal) / sectorTotalNbPrises;
@@ -262,31 +174,12 @@ export default function AdminClassementGeneral() {
         }
       });
       
-      // Sort by points (desc), then by grosse prise (desc), then by earliest last valid entry for sector ranking
+      // Sort by points (desc) for sector ranking
       const sectorSorted = [...sectorCalculated].sort((a, b) => {
-        // Primary: Points (desc)
-        if (b.points !== a.points) {
-          return b.points - a.points;
-        }
-        
-        // Tie-breaker 1: Grosse prise (desc)
-        if (b.grossePrise !== a.grossePrise) {
-          return b.grossePrise - a.grossePrise;
-        }
-        
-        // Tie-breaker 2: Earliest last valid entry (asc)
-        if (a.lastValidEntry && b.lastValidEntry) {
-          return a.lastValidEntry.getTime() - b.lastValidEntry.getTime();
-        } else if (a.lastValidEntry) {
-          return -1; // a has entry, b doesn't - a wins
-        } else if (b.lastValidEntry) {
-          return 1; // b has entry, a doesn't - b wins
-        }
-        
-        return 0;
+        return b.points - a.points; // Sort by Points (desc)
       });
       
-      // Assign sector rankings
+      // Assign sector rankings (1-20)
       sectorSorted.forEach((comp, index) => {
         comp.classementSecteur = index + 1;
       });
@@ -294,7 +187,7 @@ export default function AdminClassementGeneral() {
       competitorsBySector[sector] = sectorSorted;
     });
     
-    // Now build general ranking by place groups
+    // Now build general ranking by place groups (groupes de place sectorielle)
     const generalRanking: CalculatedCompetitor[] = [];
     
     // Process each place (1st through 20th)
@@ -310,30 +203,16 @@ export default function AdminClassementGeneral() {
         }
       });
       
-      // Sort this place group by coefficient (desc), then tie-breakers
+      // Sort this place group by coefficient (desc), then by grosse prise (desc)
       placeGroup.sort((a, b) => {
         // Primary: Coefficient secteur (desc)
         if (b.coefficientSecteur !== a.coefficientSecteur) {
           return b.coefficientSecteur - a.coefficientSecteur;
         }
         
-        // Tie-breaker 1: Grosse prise (desc)
+        // Tie-breaker: Grosse prise (desc)
         if (b.grossePrise !== a.grossePrise) {
           return b.grossePrise - a.grossePrise;
-        }
-        
-        // Tie-breaker 2: Total Points (desc)
-        if (b.points !== a.points) {
-          return b.points - a.points;
-        }
-        
-        // Tie-breaker 3: Earliest last valid entry (asc)
-        if (a.lastValidEntry && b.lastValidEntry) {
-          return a.lastValidEntry.getTime() - b.lastValidEntry.getTime();
-        } else if (a.lastValidEntry) {
-          return -1;
-        } else if (b.lastValidEntry) {
-          return 1;
         }
         
         return 0;
@@ -343,7 +222,7 @@ export default function AdminClassementGeneral() {
       generalRanking.push(...placeGroup);
     }
     
-    // Handle zero-coefficient competitors (place at bottom with rank 120)
+    // Handle zero-coefficient competitors (Cas Spécial "NB Prise = 0")
     const zeroCoeffCompetitors = generalRanking.filter(comp => comp.coefficientSecteur === 0);
     const nonZeroCompetitors = generalRanking.filter(comp => comp.coefficientSecteur > 0);
     
@@ -352,12 +231,13 @@ export default function AdminClassementGeneral() {
       comp.classementGeneral = index + 1;
     });
     
+    // All zero-coefficient competitors get rank 120
     zeroCoeffCompetitors.forEach(comp => {
       comp.classementGeneral = 120;
     });
     
     return [...nonZeroCompetitors, ...zeroCoeffCompetitors];
-  }, [allCompetitors, hourlyData, grossePriseData]);
+  }, [firestoreCompetitors, hourlyDataByCompetitor, bigCatchesByCompetitor]);
 
   // Apply sorting
   const sortedCompetitors = useMemo(() => {
@@ -429,21 +309,13 @@ export default function AdminClassementGeneral() {
       filtered = filtered.filter(comp => comp.sector === sectorFilter);
     }
     
-    // Type filters
-    switch (filterType) {
-      case 'top3':
-        filtered = filtered.slice(0, 3);
-        break;
-      case 'top10':
-        filtered = filtered.slice(0, 10);
-        break;
-      case 'withGrossePrise':
-        filtered = filtered.filter(comp => comp.grossePrise > 0);
-        break;
-    }
-    
     return filtered;
-  }, [sortedCompetitors, searchQuery, sectorFilter, filterType]);
+  }, [sortedCompetitors, searchQuery, sectorFilter]);
+
+  // Display logic
+  const displayedCompetitors = isExpanded ? filteredCompetitors : filteredCompetitors.slice(0, 10);
+  const hiddenCount = Math.max(0, filteredCompetitors.length - 10);
+  const showToggleButton = filteredCompetitors.length > 10;
 
   const getSectorColor = (sector: string) => {
     const colors: { [key: string]: string } = {
@@ -486,38 +358,188 @@ export default function AdminClassementGeneral() {
     }
   };
 
-  const handleExportCSV = () => {
-    const headers = [
-      'Box N°', 
-      'Compétiteur', 
-      'Équipe', 
-      'Secteur',
-      'Nb Prises global', 
-      'Grosse prise (g)', 
-      'Classement secteur',
-      'Coefficient secteur', 
-      'Classement Général'
-    ];
+  const handleDownloadPDF = () => {
+    // Log export action to Firebase
+    auditLog({
+      action: 'EXPORT_GENERAL_RANKING_ADMIN',
+      details: `Export PDF classement général admin - ${filteredCompetitors.length} compétiteurs`,
+      metadata: { sectorFilter, searchQuery, totalCompetitors: filteredCompetitors.length }
+    });
     
-    const rows = filteredCompetitors.map(comp => [
-      comp.boxCode,
-      comp.name,
-      comp.equipe,
-      comp.sector,
-      comp.nbPrisesGlobal,
-      comp.grossePrise,
-      comp.classementSecteur,
-      formatCoefficient(comp.coefficientSecteur),
-      comp.classementGeneral
-    ]);
+    const currentDate = new Date().toLocaleDateString('fr-FR', { 
+      timeZone: 'Africa/Tunis',
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
+    
+    const currentTime = new Date().toLocaleTimeString('fr-FR', {
+      timeZone: 'Africa/Tunis',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit'
+    });
 
-    const csvContent = [headers, ...rows].map(row => row.join(',')).join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const logoHtml = firestorePublicSettings?.logos?.light || firestorePublicSettings?.logos?.dark
+      ? `<img src="${firestorePublicSettings.logos.light || firestorePublicSettings.logos.dark}" alt="Titanium Tunisia Open" style="height: 80px; margin: 0 auto 20px auto; display: block;" />`
+      : `<div style="text-align: center; margin-bottom: 20px;">
+           <h1 style="color: #0ea5e9; font-size: 24px; margin: 0;">Titanium Tunisia Open</h1>
+         </div>`;
+
+    const tableHTML = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="UTF-8">
+          <title>Classement Général - Titanium Tunisia Open</title>
+          <style>
+            @page { 
+              size: A4; 
+              margin: 20mm; 
+            }
+            body { 
+              font-family: Arial, sans-serif; 
+              margin: 0; 
+              padding: 0;
+              font-size: 12px;
+              line-height: 1.4;
+            }
+            .header {
+              text-align: center;
+              margin-bottom: 30px;
+              border-bottom: 2px solid #0ea5e9;
+              padding-bottom: 20px;
+            }
+            .tagline {
+              font-style: italic;
+              color: #666;
+              margin: 10px 0;
+              font-size: 14px;
+            }
+            .event-info {
+              font-weight: bold;
+              color: #0ea5e9;
+              margin: 10px 0;
+              font-size: 16px;
+            }
+            .disclaimer {
+              background-color: #fff3cd;
+              border: 1px solid #ffeaa7;
+              padding: 10px;
+              margin: 20px 0;
+              border-radius: 4px;
+              font-style: italic;
+              text-align: center;
+            }
+            .meta-info {
+              text-align: right;
+              margin-bottom: 20px;
+              color: #666;
+              font-size: 11px;
+            }
+            table { 
+              width: 100%; 
+              border-collapse: collapse; 
+              margin-top: 20px;
+              font-size: 11px;
+            }
+            th, td { 
+              border: 1px solid #ddd; 
+              padding: 6px 8px; 
+              text-align: left; 
+            }
+            th { 
+              background-color: #f8f9fa; 
+              font-weight: bold;
+              font-size: 10px;
+              text-transform: uppercase;
+            }
+            .rank-1 { background-color: #fff3cd; }
+            .rank-2 { background-color: #f8f9fa; }
+            .rank-3 { background-color: #ffeaa7; }
+            .sector-badge {
+              display: inline-block;
+              padding: 2px 6px;
+              border-radius: 4px;
+              color: white;
+              font-size: 9px;
+              font-weight: bold;
+              margin-left: 4px;
+            }
+            .sector-A { background-color: #3b82f6; }
+            .sector-B { background-color: #10b981; }
+            .sector-C { background-color: #f59e0b; }
+            .sector-D { background-color: #ef4444; }
+            .sector-E { background-color: #8b5cf6; }
+            .sector-F { background-color: #06b6d4; }
+            .text-center { text-align: center; }
+            .font-mono { font-family: 'Courier New', monospace; }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            ${logoHtml}
+            <div class="tagline">The most luxurious Surfcasting competition in the world</div>
+            <div class="event-info">TITANIUM TUNISIA OPEN - 6 septembre 2025 - Raoued, Tunisie</div>
+            <div class="disclaimer">
+              Classement provisoire — susceptible d'être modifié jusqu'à publication des résultats officiels.
+            </div>
+          </div>
+          
+          <div class="meta-info">
+            Généré le ${currentDate} à ${currentTime} (Raoued, Tunisie)
+          </div>
+          
+          <h2 style="color: #0ea5e9; margin-bottom: 20px;">Classement Général</h2>
+          
+          <table>
+            <thead>
+              <tr>
+                <th>Box N°</th>
+                <th>Compétiteur</th>
+                <th>Équipe</th>
+                <th>Nb Prises global</th>
+                <th>Grosse prise (g)</th>
+                <th>Classement secteur</th>
+                <th>Coefficient secteur</th>
+                <th>Classement Général</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${filteredCompetitors.map(comp => `
+                <tr class="${comp.classementGeneral <= 3 ? `rank-${comp.classementGeneral}` : ''}">
+                  <td class="font-mono">${comp.boxCode}</td>
+                  <td>
+                    ${comp.name}
+                    <span class="sector-badge sector-${comp.sector}">${comp.sector}</span>
+                  </td>
+                  <td>${comp.equipe}</td>
+                  <td class="text-center">${comp.nbPrisesGlobal}</td>
+                  <td class="text-center">${comp.grossePrise > 0 ? formatNumber(comp.grossePrise) : '—'}</td>
+                  <td class="text-center">${comp.classementSecteur}</td>
+                  <td class="text-center font-mono">${formatCoefficient(comp.coefficientSecteur)}</td>
+                  <td class="text-center"><strong>${comp.classementGeneral}</strong></td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+          
+          <div style="margin-top: 30px; text-align: center; color: #666; font-size: 10px;">
+            Document généré automatiquement par le système Titanium Tunisia Open
+          </div>
+        </body>
+      </html>
+    `.trim();
+
+    // Create and download PDF-ready HTML
+    const blob = new Blob([tableHTML], { type: 'text/html;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `classement-general.csv`;
+    a.download = `classement-general-admin-${new Date().toISOString().slice(0, 10)}.html`;
     a.click();
+    URL.revokeObjectURL(url);
   };
 
   return (
@@ -527,7 +549,7 @@ export default function AdminClassementGeneral() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Classement Général</h1>
-            <p className="text-gray-600 dark:text-gray-300">Classement général de la compétition en temps réel</p>
+            <p className="text-gray-600 dark:text-gray-300">Classement général par groupes de place sectorielle</p>
           </div>
           <div className="flex items-center space-x-2">
             {isOnline ? (
@@ -565,24 +587,35 @@ export default function AdminClassementGeneral() {
                 <option key={sector} value={sector}>Secteur {sector}</option>
               ))}
             </select>
-            <select
-              value={filterType}
-              onChange={(e) => setFilterType(e.target.value)}
-              className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm"
-            >
-              <option value="all">Tous</option>
-              <option value="top3">Top 3 général</option>
-              <option value="top10">Top 10 général</option>
-              <option value="withGrossePrise">Avec grosse prise</option>
-            </select>
+            
+            {/* Toggle Button */}
+            {showToggleButton && (
+              <Button
+                variant="outline"
+                onClick={() => setIsExpanded(!isExpanded)}
+                className="flex items-center space-x-2 whitespace-nowrap"
+              >
+                {isExpanded ? (
+                  <>
+                    <EyeOff className="w-4 h-4" />
+                    <span>Masquer le reste</span>
+                  </>
+                ) : (
+                  <>
+                    <Eye className="w-4 h-4" />
+                    <span>Afficher le reste ({hiddenCount})</span>
+                  </>
+                )}
+              </Button>
+            )}
           </div>
           <Button
             variant="outline"
             size="sm"
-            onClick={handleExportCSV}
+            onClick={handleDownloadPDF}
           >
             <Download className="w-4 h-4 mr-1" />
-            Exporter CSV
+            Exporter PDF
           </Button>
         </div>
       </div>
@@ -597,7 +630,7 @@ export default function AdminClassementGeneral() {
                 onClick={() => handleSort('boxNumber')}
               >
                 <div className="flex items-center space-x-1">
-                  <span>BOX N°</span>
+                  <span>Box N°</span>
                   <ArrowUpDown className="w-3 h-3" />
                 </div>
               </th>
@@ -667,91 +700,114 @@ export default function AdminClassementGeneral() {
             </tr>
           </thead>
           <tbody className="bg-white dark:bg-gray-900 divide-y divide-gray-200 dark:divide-gray-700">
-            {filteredCompetitors.map(competitor => {
-              const isTopThree = competitor.classementGeneral <= 3;
-              const isZeroCoeff = competitor.coefficientSecteur === 0;
-              
-              return (
-                <tr 
-                  key={competitor.id}
-                  className={`${isTopThree ? 'bg-yellow-50 dark:bg-yellow-900/10' : ''} ${isZeroCoeff ? 'bg-gray-100 dark:bg-gray-800' : ''} hover:bg-gray-50 dark:hover:bg-gray-800`}
-                >
-                  {/* Box Number - Sticky */}
-                  <td className="sticky left-0 bg-white dark:bg-gray-900 px-4 py-4 border-r border-gray-200 dark:border-gray-700">
-                    <div className="flex items-center space-x-2">
+            <AnimatePresence>
+              {displayedCompetitors.map((competitor, index) => {
+                const isTopThree = competitor.classementGeneral <= 3;
+                
+                return (
+                  <motion.tr
+                    key={competitor.id}
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -20 }}
+                    transition={{ duration: 0.3, delay: index * 0.02 }}
+                    className={cn(
+                      isTopThree && 'bg-yellow-50 dark:bg-yellow-900/10',
+                      'hover:bg-gray-50 dark:hover:bg-gray-800'
+                    )}
+                  >
+                    {/* Box Number - Sticky */}
+                    <td className="sticky left-0 bg-white dark:bg-gray-900 px-4 py-4 border-r border-gray-200 dark:border-gray-700">
                       <span className="font-mono font-semibold text-gray-900 dark:text-white">
                         {competitor.boxCode}
                       </span>
-                      <Badge className={`text-xs ${getSectorColor(competitor.sector)}`}>
-                        {competitor.sector}
-                      </Badge>
-                    </div>
-                  </td>
-                  
-                  {/* Competitor */}
-                  <td className="px-4 py-4 whitespace-nowrap">
-                    <span className="font-medium text-gray-900 dark:text-gray-100">
-                      {competitor.name}
-                    </span>
-                  </td>
-                  
-                  {/* Équipe */}
-                  <td className="px-4 py-4 whitespace-nowrap">
-                    <span className="text-gray-800 dark:text-gray-200">{competitor.equipe}</span>
-                  </td>
-                  
-                  {/* Nb Prises global */}
-                  <td className="px-4 py-4 whitespace-nowrap">
-                    <span className="font-semibold text-gray-900 dark:text-gray-100">
-                      {competitor.nbPrisesGlobal}
-                    </span>
-                  </td>
-                  
-                  {/* Grosse prise */}
-                  <td className="px-4 py-4 whitespace-nowrap">
-                    <span className="font-semibold text-gray-900 dark:text-gray-100">
-                      {competitor.grossePrise > 0 ? formatNumber(competitor.grossePrise) : '—'}
-                    </span>
-                  </td>
-                  
-                  {/* Classement secteur */}
-                  <td className="px-4 py-4 whitespace-nowrap">
-                    <div className="flex items-center space-x-2">
-                      {competitor.classementSecteur <= 3 && getRankIcon(competitor.classementSecteur)}
+                    </td>
+                    
+                    {/* Competitor */}
+                    <td className="px-4 py-4 whitespace-nowrap">
+                      <div className="flex items-center space-x-2">
+                        <span className="font-medium text-gray-900 dark:text-gray-100">
+                          {competitor.name}
+                        </span>
+                        <Badge className={cn('text-xs', getSectorColor(competitor.sector))}>
+                          {competitor.sector}
+                        </Badge>
+                      </div>
+                    </td>
+                    
+                    {/* Équipe */}
+                    <td className="px-4 py-4 whitespace-nowrap">
+                      <span className="text-gray-800 dark:text-gray-200">{competitor.equipe}</span>
+                    </td>
+                    
+                    {/* Nb Prises global */}
+                    <td className="px-4 py-4 whitespace-nowrap text-center">
                       <span className="font-semibold text-gray-900 dark:text-gray-100">
-                        {competitor.classementSecteur}
+                        {competitor.nbPrisesGlobal}
                       </span>
-                    </div>
-                  </td>
-                  
-                  {/* Coefficient secteur */}
-                  <td className="px-4 py-4 whitespace-nowrap">
-                    <span className="font-mono text-sm text-gray-800 dark:text-gray-200">
-                      {formatCoefficient(competitor.coefficientSecteur)}
-                    </span>
-                  </td>
-                  
-                  {/* Classement Général */}
-                  <td className="px-4 py-4 whitespace-nowrap">
-                    <div className="flex items-center space-x-2">
-                      {competitor.classementGeneral <= 3 && getRankIcon(competitor.classementGeneral)}
-                      <span className={`font-bold text-lg ${
-                        competitor.classementGeneral === 1 ? 'text-yellow-600' :
-                        competitor.classementGeneral === 2 ? 'text-gray-500' :
-                        competitor.classementGeneral === 3 ? 'text-amber-600' :
-                        competitor.classementGeneral === 120 ? 'text-gray-400' :
-                        'text-ocean-600'
-                      }`}>
-                        {competitor.classementGeneral}
+                    </td>
+                    
+                    {/* Grosse prise */}
+                    <td className="px-4 py-4 whitespace-nowrap text-center">
+                      <span className="font-semibold text-gray-900 dark:text-gray-100">
+                        {competitor.grossePrise > 0 ? formatNumber(competitor.grossePrise) : '—'}
                       </span>
-                    </div>
-                  </td>
-                </tr>
-              );
-            })}
+                    </td>
+                    
+                    {/* Classement secteur */}
+                    <td className="px-4 py-4 whitespace-nowrap text-center">
+                      <div className="flex items-center justify-center space-x-1">
+                        {competitor.classementSecteur <= 3 && getRankIcon(competitor.classementSecteur)}
+                        <span className="font-semibold text-gray-900 dark:text-gray-100">
+                          {competitor.classementSecteur}
+                        </span>
+                      </div>
+                    </td>
+                    
+                    {/* Coefficient secteur */}
+                    <td className="px-4 py-4 whitespace-nowrap text-center">
+                      <span className="font-mono text-sm text-gray-800 dark:text-gray-200">
+                        {formatCoefficient(competitor.coefficientSecteur)}
+                      </span>
+                    </td>
+                    
+                    {/* Classement Général */}
+                    <td className="px-4 py-4 whitespace-nowrap text-center">
+                      <div className="flex items-center justify-center space-x-1">
+                        {competitor.classementGeneral <= 3 && getRankIcon(competitor.classementGeneral)}
+                        <span className={cn('font-bold text-lg', 
+                          competitor.classementGeneral === 1 ? 'text-yellow-600' :
+                          competitor.classementGeneral === 2 ? 'text-gray-500' :
+                          competitor.classementGeneral === 3 ? 'text-amber-600' :
+                          competitor.classementGeneral === 120 ? 'text-gray-400' :
+                          'text-ocean-600'
+                        )}>
+                          {competitor.classementGeneral}
+                        </span>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </AnimatePresence>
           </tbody>
         </table>
       </div>
+
+      {/* Collapsed state indicator */}
+      {!isExpanded && hiddenCount > 0 && (
+        <div className="bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700 p-4 text-center">
+          <div className="inline-block px-4 py-2 bg-gray-100 dark:bg-gray-800 rounded-lg text-sm text-gray-600 dark:text-gray-400">
+            {hiddenCount} autres compétiteurs — 
+            <button 
+              onClick={() => setIsExpanded(true)}
+              className="ml-1 text-ocean-600 dark:text-ocean-400 hover:underline font-medium"
+            >
+              Afficher le reste
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
