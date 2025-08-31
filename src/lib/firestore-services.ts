@@ -258,6 +258,16 @@ export class JudgeService {
     }
   }
 
+  static async deleteJudge(id: string) {
+    try {
+      await deleteDoc(doc(db, COLLECTIONS.JUDGES, id));
+      return { success: true };
+    } catch (error) {
+      console.error('Error deleting judge:', error);
+      return { success: false, error };
+    }
+  }
+
   static async getJudgeByUid(uid: string): Promise<JudgeDoc | null> {
     try {
       const docRef = doc(db, COLLECTIONS.JUDGES, uid);
@@ -385,5 +395,32 @@ export class PublicAppearanceService {
         callback(null);
       }
     );
+  }
+}
+
+// Export convenience functions for direct use
+export const subscribeCompetitors = CompetitorService.subscribeToCompetitors;
+export const subscribeJudges = JudgeService.subscribeToJudges;
+export const subscribeCompetitionSettings = CompetitionSettingsService.subscribeToSettings;
+export const subscribePublicAppearanceSettings = PublicAppearanceService.subscribeToSettings;
+export const saveCompetitor = CompetitorService.saveCompetitor;
+export const deleteCompetitor = CompetitorService.deleteCompetitor;
+export const saveJudge = JudgeService.saveJudge;
+export const deleteJudge = JudgeService.deleteJudge;
+export const saveCompetitionSettings = CompetitionSettingsService.saveSettings;
+export const savePublicAppearanceSettings = PublicAppearanceService.saveSettings;
+
+// Audit log function
+export async function auditLog(data: any): Promise<void> {
+  try {
+    // Store audit log in localStorage for now
+    const logs = JSON.parse(localStorage.getItem('auditLogs') || '[]');
+    logs.push({
+      ...data,
+      timestamp: new Date().toISOString()
+    });
+    localStorage.setItem('auditLogs', JSON.stringify(logs));
+  } catch (error) {
+    console.error('Error logging audit:', error);
   }
 }
