@@ -19,12 +19,14 @@ export const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 
 // Initialize Firestore with error handling
+export let db;
+
 try {
-  export const db = initializeFirestore(app, {
+  db = initializeFirestore(app, {
     localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
   });
 } catch (error) {
   console.warn('Firestore initialization failed, using fallback:', error);
   // Fallback for development
-  export const db = initializeFirestore(app, {});
+  db = initializeFirestore(app, {});
 }
