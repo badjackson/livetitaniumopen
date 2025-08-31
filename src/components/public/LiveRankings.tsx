@@ -667,6 +667,7 @@ export default function LiveRankings() {
     a.click();
     URL.revokeObjectURL(url);
   };
+  };
 
   return (
     <section id="classement-general" className="py-16 bg-white dark:bg-gray-900">
