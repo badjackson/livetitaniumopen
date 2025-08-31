@@ -32,7 +32,8 @@ import {
   Download
 } from 'lucide-react';
 import { formatWeight, formatNumber, formatTime } from '@/lib/utils';
-import { upsertHourlyEntry } from '@/lib/firestore-entries';
+import { useFirestore } from '@/components/providers/FirestoreSyncProvider';
+import { useCurrentUser } from '@/hooks/useCurrentUser';
 
 interface Competitor {
   id: string;
@@ -61,43 +62,17 @@ interface HourStatus {
   completedCount: number;
 }
 
-// Mock competitors data - will be replaced with API
-const getCompetitorsBySector = (): { [sector: string]: Competitor[] } => {
-  if (typeof window !== 'undefined') {
-    try {
-      const savedCompetitors = localStorage.getItem('competitors');
-      if (savedCompetitors) {
-        const allCompetitors = JSON.parse(savedCompetitors);
-        const competitorsBySector: { [sector: string]: Competitor[] } = {};
-        
-        allCompetitors.forEach((comp: any) => {
-          if (!competitorsBySector[comp.sector]) {
-            competitorsBySector[comp.sector] = [];
-          }
-          
-          competitorsBySector[comp.sector].push({
-            id: comp.id,
-            boxNumber: comp.boxNumber,
-            boxCode: comp.boxCode,
-            name: comp.fullName,
-            equipe: comp.equipe,
-            sector: comp.sector,
-          });
-        });
-        
-        return competitorsBySector;
-      }
-    } catch (error) {
-      console.error('Error loading competitors:', error);
-    }
-  }
-  
-  // Fallback - empty object
-  return {};
-};
-
 export default function AdminPrises() {
   const searchParams = useSearchParams();
+  const { currentUser } = useCurrentUser();
+  const { 
+    competitors: firestoreCompetitors, 
+    hourlyEntries: firestoreHourlyEntries, 
+    saveHourlyEntry 
+  } = useFirestore();
+  
+  const sectors = ['A', 'B', 'C', 'D', 'E', 'F'];
+  
   const [activeSector, setActiveSector] = useState(searchParams.get('sector') || 'A');
   const [currentHour, setCurrentHour] = useState(parseInt(searchParams.get('hour') || '1'));
   const [isOnline, setIsOnline] = useState(true);
@@ -108,228 +83,64 @@ export default function AdminPrises() {
   const [isEditorCollapsed, setIsEditorCollapsed] = useState(false);
   const [isOnlineSimulation, setIsOnlineSimulation] = useState(true);
   
-  const [hourStatuses, setHourStatuses] = useState<{ [sector: string]: { [hour: number]: HourStatus } }>({});
-
-  // Dynamic competitors
-  const [mockCompetitorsBySector, setMockCompetitorsBySector] = useState<{ [sector: string]: Competitor[] }>({});
-  
-  // Load competitors on mount and listen for changes
-  useEffect(() => {
-    const loadCompetitors = () => {
-      const competitors = getCompetitorsBySector();
-      setMockCompetitorsBySector(competitors);
-    };
-    
-    loadCompetitors();
-    
-    // Listen for storage changes for live updates
-    const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === 'competitors') {
-        loadCompetitors();
+  // Convert Firebase competitors to local format
+  const competitorsBySector = useMemo(() => {
+    const grouped: { [sector: string]: Competitor[] } = {};
+    firestoreCompetitors.forEach(comp => {
+      if (!grouped[comp.sector]) {
+        grouped[comp.sector] = [];
       }
-    };
+      grouped[comp.sector].push({
+        id: comp.id,
+        boxNumber: comp.boxNumber,
+        boxCode: comp.boxCode,
+        name: comp.fullName,
+        equipe: comp.equipe,
+        sector: comp.sector
+      });
+    });
+    return grouped;
+  }, [firestoreCompetitors]);
+
+  // Convert Firebase hourly entries to local format
+  const hourStatuses = useMemo(() => {
+    const statuses: { [sector: string]: { [hour: number]: HourStatus } } = {};
     
-    // Set initial online status
-    setIsOnline(navigator.onLine);
-    setIsOnlineSimulation(navigator.onLine);
-    
-    // Auto-sync when coming back online
-    const handleOnlineSync = () => {
-      setIsOnline(true);
-      setIsOnlineSimulation(true);
-      
-      // Try to sync any offline entries
-      if (typeof window !== 'undefined') {
-        try {
-          const allHourlyData = JSON.parse(localStorage.getItem('hourlyData') || '{}');
-          
-          // Update any offline entries to online status
-          sectors.forEach(sector => {
-            for (let hour = 1; hour <= 7; hour++) {
-              const hourData = allHourlyData[sector]?.[hour] || {};
-              Object.keys(hourData).forEach(competitorId => {
-                const entry = hourData[competitorId];
-                if (entry.status === 'offline_admin') {
-                  entry.status = 'locked_admin';
-                  entry.timestamp = new Date();
-                }
-              });
-            }
-          });
-          
-          localStorage.setItem('hourlyData', JSON.stringify(allHourlyData));
-          
-          // Trigger update
-          window.dispatchEvent(new StorageEvent('storage', {
-            key: 'hourlyData',
-            newValue: JSON.stringify(allHourlyData)
-          }));
-        } catch (error) {
-          console.error('Error syncing offline hourly entries:', error);
-        }
+    sectors.forEach(sector => {
+      statuses[sector] = {};
+      for (let h = 1; h <= 7; h++) {
+        const entries: { [competitorId: string]: HourlyEntry } = {};
+        
+        // Get entries for this sector and hour
+        const sectorHourEntries = firestoreHourlyEntries.filter(entry => 
+          entry.sector === sector && entry.hour === h
+        );
+        
+        sectorHourEntries.forEach(entry => {
+          entries[entry.competitorId] = {
+            competitorId: entry.competitorId,
+            boxNumber: entry.boxNumber,
+            fishCount: entry.fishCount,
+            totalWeight: entry.totalWeight,
+            status: entry.status,
+            timestamp: entry.timestamp?.toDate ? entry.timestamp.toDate() : new Date(),
+            source: entry.source,
+            syncRetries: 0
+          };
+        });
+        
+        statuses[sector][h] = {
+          hour: h,
+          entries,
+          completedCount: Object.values(entries).filter(e => 
+            ['locked_judge', 'locked_admin', 'offline_judge', 'offline_admin'].includes(e.status)
+          ).length
+        };
       }
-    };
-
-    window.addEventListener('storage', handleStorageChange);
-    window.addEventListener('online', handleOnlineSync);
+    });
     
-    return () => {
-      window.removeEventListener('storage', handleStorageChange);
-      window.removeEventListener('online', handleOnlineSync);
-    };
-  }, []);
-
-  // Load persisted data on mount
-  useEffect(() => {
-    if (Object.keys(mockCompetitorsBySector).length > 0) {
-      const loadPersistedData = () => {
-        if (typeof window !== 'undefined') {
-          try {
-            // Try to load from localStorage first
-            let allHourlyData = JSON.parse(localStorage.getItem('hourlyData') || '{}');
-            
-            // If localStorage is empty, try sessionStorage backup
-            if (Object.keys(allHourlyData).length === 0) {
-              const backupData = sessionStorage.getItem('hourlyDataBackup');
-              if (backupData) {
-                allHourlyData = JSON.parse(backupData);
-                // Restore to localStorage
-                localStorage.setItem('hourlyData', JSON.stringify(allHourlyData));
-              }
-            }
-            
-            const newHourStatuses: { [sector: string]: { [hour: number]: HourStatus } } = {};
-            
-            sectors.forEach(sector => {
-              newHourStatuses[sector] = {};
-              for (let h = 1; h <= 7; h++) {
-                const entries = allHourlyData[sector]?.[h] || {};
-                
-                // Check for individual entry backups if main data is missing
-                if (Object.keys(entries).length === 0) {
-                  mockCompetitorsBySector[sector]?.forEach(comp => {
-                    const entryKey = `hourlyData_${sector}_${h}_${comp.id}`;
-                    const savedEntry = localStorage.getItem(entryKey);
-                    if (savedEntry) {
-                      try {
-                        entries[comp.id] = JSON.parse(savedEntry);
-                      } catch (error) {
-                        console.error('Error parsing individual hourly entry:', error);
-                      }
-                    }
-                  });
-                }
-                
-                // Convert timestamp strings back to Date objects
-                const processedEntries: { [key: string]: any } = {};
-                Object.entries(entries).forEach(([competitorId, entry]: [string, any]) => {
-                  processedEntries[competitorId] = {
-                    ...entry,
-                    timestamp: entry.timestamp ? new Date(entry.timestamp) : undefined
-                  };
-                });
-                
-                newHourStatuses[sector][h] = {
-                  hour: h,
-                  entries: processedEntries,
-                  completedCount: Object.values(processedEntries).filter((e: any) => 
-                    ['locked_judge', 'locked_admin', 'offline_judge', 'offline_admin'].includes(e.status)
-                  ).length
-                };
-              }
-            });
-            
-            setHourStatuses(newHourStatuses);
-          } catch (error) {
-            console.error('Failed to load persisted data:', error);
-            
-            // Try to recover from sessionStorage
-            try {
-              const fallbackData = sessionStorage.getItem('hourlyDataBackup');
-              if (fallbackData) {
-                const parsedData = JSON.parse(fallbackData);
-                localStorage.setItem('hourlyData', fallbackData);
-                // Reload with recovered data
-                loadPersistedData();
-              }
-            } catch (recoveryError) {
-              console.error('Failed to recover hourly data from backup:', recoveryError);
-            }
-          }
-        }
-      };
-      
-      // Initial load
-      loadPersistedData();
-    }
-  }, [mockCompetitorsBySector]);
-
-  // Listen for real-time updates from Judge
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const handleStorageChange = (e: StorageEvent) => {
-        if (e.key === 'hourlyData') {
-          if (!e.newValue || e.newValue === 'null') {
-            // Data was reset - clear all entries
-            setHourStatuses({});
-            setSelectedCompetitorId(null);
-            setFishCount('');
-            setTotalWeight('');
-            setErrors({});
-            
-            // Show reset notification
-            const notification = document.createElement('div');
-            notification.className = 'fixed top-4 right-4 bg-blue-600 text-white px-4 py-3 rounded-lg text-sm z-50 shadow-lg';
-            notification.textContent = 'Données de compétition réinitialisées';
-            document.body.appendChild(notification);
-            
-            setTimeout(() => {
-              if (document.body.contains(notification)) {
-                document.body.removeChild(notification);
-              }
-            }, 5000);
-            
-            return;
-          }
-          
-          try {
-            const allHourlyData = JSON.parse(e.newValue);
-            const newHourStatuses: { [sector: string]: { [hour: number]: HourStatus } } = {};
-            
-            sectors.forEach(sector => {
-              newHourStatuses[sector] = {};
-              for (let h = 1; h <= 7; h++) {
-                const entries = allHourlyData[sector]?.[h] || {};
-                // Convert timestamp strings back to Date objects
-                const processedEntries: { [key: string]: any } = {};
-                Object.entries(entries).forEach(([competitorId, entry]: [string, any]) => {
-                  processedEntries[competitorId] = {
-                    ...entry,
-                    timestamp: entry.timestamp ? new Date(entry.timestamp) : undefined
-                  };
-                });
-                
-                newHourStatuses[sector][h] = {
-                  hour: h,
-                  entries: processedEntries,
-                  completedCount: Object.values(processedEntries).filter((e: any) => 
-                    ['locked_judge', 'locked_admin', 'offline_judge', 'offline_admin'].includes(e.status)
-                  ).length
-                };
-              }
-            });
-            
-            setHourStatuses(newHourStatuses);
-          } catch (error) {
-            console.error('Failed to sync real-time data:', error);
-          }
-        }
-      };
-      
-      window.addEventListener('storage', handleStorageChange);
-      return () => window.removeEventListener('storage', handleStorageChange);
-    }
-  }, []);
+    return statuses;
+  }, [firestoreHourlyEntries]);
 
   // Editor state
   const [selectedCompetitorId, setSelectedCompetitorId] = useState<string | null>(null);
@@ -338,8 +149,7 @@ export default function AdminPrises() {
   const [errors, setErrors] = useState<{ [key: string]: string }>({});
   const [isSaving, setIsSaving] = useState(false);
 
-  const sectors = ['A', 'B', 'C', 'D', 'E', 'F'];
-  const currentCompetitors = mockCompetitorsBySector[activeSector] || [];
+  const currentCompetitors = competitorsBySector[activeSector] || [];
   
   // Get current hour status
   const currentHourStatus = useMemo(() => {
@@ -389,62 +199,11 @@ export default function AdminPrises() {
     return filtered;
   }, [currentCompetitors, searchQuery, showIncompleteOnly, statusFilter, currentHourStatus.entries]);
 
-  // Initialize data
+  // Set initial online status
   useEffect(() => {
-    // Initialize hour statuses for all sectors
-    if (Object.keys(hourStatuses).length === 0) {
-      const statuses: { [sector: string]: { [hour: number]: HourStatus } } = {};
-      sectors.forEach(sector => {
-        statuses[sector] = {};
-        for (let h = 1; h <= 7; h++) {
-          statuses[sector][h] = {
-            hour: h,
-            entries: {},
-            completedCount: 0,
-          };
-        }
-      });
-      setHourStatuses(statuses);
-    }
-  }, [hourStatuses]);
-
-  // Update localStorage when entries change
-  const updateLocalStorage = (sector: string, hour: number, competitorId: string, entry: HourlyEntry) => {
-    if (typeof window !== 'undefined') {
-      try {
-        const allHourlyData = JSON.parse(localStorage.getItem('hourlyData') || '{}');
-        if (!allHourlyData[sector]) allHourlyData[sector] = {};
-        if (!allHourlyData[sector][hour]) allHourlyData[sector][hour] = {};
-        
-        allHourlyData[sector][hour][competitorId] = entry;
-        
-        localStorage.setItem('hourlyData', JSON.stringify(allHourlyData));
-        
-        // Create backup in sessionStorage for extra safety
-        sessionStorage.setItem('hourlyDataBackup', JSON.stringify(allHourlyData));
-        
-        // Also store individual entry for recovery
-        const entryKey = `hourlyData_${sector}_${hour}_${competitorId}`;
-        localStorage.setItem(entryKey, JSON.stringify(entry));
-        
-        // Trigger storage event for real-time updates
-        window.dispatchEvent(new StorageEvent('storage', {
-          key: 'hourlyData',
-          newValue: JSON.stringify(allHourlyData)
-        }));
-      } catch (error) {
-        console.error('Failed to store entry locally:', error);
-        
-        // Fallback: try to save in sessionStorage
-        try {
-          const fallbackKey = `fallback_hourlyData_${sector}_${hour}_${competitorId}`;
-          sessionStorage.setItem(fallbackKey, JSON.stringify(entry));
-        } catch (fallbackError) {
-          console.error('Failed to store hourly entry in sessionStorage:', fallbackError);
-        }
-      }
-    }
-  };
+    setIsOnline(navigator.onLine);
+    setIsOnlineSimulation(navigator.onLine);
+  }, []);
 
   // Auto-set weight to 0 when fish count is 0
   useEffect(() => {
@@ -573,50 +332,21 @@ export default function AdminPrises() {
 
     setIsSaving(true);
 
-    const entry: HourlyEntry = {
+    const entryData = {
+      id: `${activeSector}-${currentHour}-${selectedCompetitor.id}`,
+      sector: activeSector,
+      hour: currentHour,
       competitorId: selectedCompetitor.id,
       boxNumber: selectedCompetitor.boxNumber,
       fishCount: parseInt(fishCount),
       totalWeight: parseInt(totalWeight),
       status: isOnlineSimulation ? 'locked_admin' : 'offline_admin',
-      timestamp: new Date(),
       source: 'Admin',
-      syncRetries: 0,
+      updatedBy: currentUser?.username || 'admin'
     };
 
-    // Update state immediately
-    setHourStatuses(prev => ({
-      ...prev,
-      [activeSector]: {
-        ...(prev[activeSector] || {}),
-        [currentHour]: {
-          ...(prev[activeSector]?.[currentHour] || { hour: currentHour, entries: {}, completedCount: 0 }),
-          entries: {
-            ...(prev[activeSector]?.[currentHour]?.entries || {}),
-            [selectedCompetitor.id]: entry
-          },
-          completedCount: Object.values({...(prev[activeSector]?.[currentHour]?.entries || {}), [selectedCompetitor.id]: entry})
-            .filter(e => ['locked_judge', 'locked_admin', 'offline_judge', 'offline_admin'].includes(e.status)).length
-        }
-      }
-    }));
-
-    // Update localStorage
-    updateLocalStorage(activeSector, currentHour, selectedCompetitor.id, entry);
-
-    // Save to Firebase
     try {
-      await upsertHourlyEntry({
-        sector: activeSector,
-        hour: currentHour,
-        competitorId: selectedCompetitor.id,
-        boxNumber: selectedCompetitor.boxNumber,
-        fishCount: parseInt(fishCount),
-        totalWeight: parseInt(totalWeight),
-        status: isOnlineSimulation ? 'locked_admin' : 'offline_admin',
-        source: 'Admin',
-        updatedBy: 'admin',
-      });
+      await saveHourlyEntry(entryData);
       console.log('Data saved to Firebase successfully');
     } catch (error) {
       console.error('Error saving to Firebase:', error instanceof Error ? error.message : error);
@@ -631,11 +361,10 @@ export default function AdminPrises() {
       
       if (saveAndNext) {
         // Find next incomplete competitor
-        const nextCompetitor = currentCompetitors.find(comp => {
-          const updatedEntries = {...currentHourStatus.entries, [selectedCompetitor.id]: entry};
-          const compEntry = updatedEntries[comp.id];
-          return !compEntry || !['locked_judge', 'locked_admin', 'offline_judge', 'offline_admin'].includes(compEntry.status);
-        });
+        const nextCompetitor = currentCompetitors.find(comp => 
+          !currentHourStatus.entries[comp.id] || 
+          !['locked_judge', 'locked_admin', 'offline_judge', 'offline_admin'].includes(currentHourStatus.entries[comp.id].status)
+        );
         
         if (nextCompetitor) {
           setSelectedCompetitorId(nextCompetitor.id);
@@ -676,8 +405,6 @@ export default function AdminPrises() {
     ['locked_judge', 'locked_admin', 'offline_judge', 'offline_admin'].includes(e.status)
   ).length;
 
-  const isCurrentHourComplete = completedEntries >= 20;
-  
   return (
     <div className="h-screen flex flex-col">
       {/* Header */}
@@ -720,7 +447,17 @@ export default function AdminPrises() {
       {/* Hour Tabs */}
       <div className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 px-6 py-3">
         <div className="flex items-center justify-between">
-          <div className="flex space-x-1">
+          <div className="flex items-center space-x-3">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setCurrentHour(Math.max(1, currentHour - 1))}
+              disabled={currentHour <= 1}
+              className="text-gray-600 dark:text-gray-300"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </Button>
+            <div className="flex space-x-1">
             {[1, 2, 3, 4, 5, 6, 7].map(hour => {
               const hourStatus = hourStatuses[activeSector]?.[hour];
               const completed = Object.values(hourStatus?.entries || {}).filter(e => 
@@ -743,6 +480,16 @@ export default function AdminPrises() {
                 </Button>
               );
             })}
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setCurrentHour(Math.min(7, currentHour + 1))}
+              disabled={currentHour >= 7}
+              className="text-gray-600 dark:text-gray-300"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </Button>
           </div>
           
           {/* Progress Bar */}
@@ -757,7 +504,7 @@ export default function AdminPrises() {
               <span className="text-sm font-medium text-gray-900 dark:text-white">
                 {isOnlineSimulation ? 'En ligne' : 'Hors ligne'}
               </span>
-              <span className="text-sm font-medium text-gray-900 dark:text-white">{completedEntries}/20</span>
+              <span className="text-sm font-medium text-gray-900 dark:text-white">{completedEntries}/{currentCompetitors.length}</span>
             </div>
             <button
               onClick={() => setIsOnlineSimulation(!isOnlineSimulation)}

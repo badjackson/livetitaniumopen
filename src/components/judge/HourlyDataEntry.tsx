@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useTranslations } from '@/components/providers/TranslationProvider';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
+import { useFirestore } from '@/components/providers/FirestoreSyncProvider';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import Button from '@/components/ui/Button';
@@ -33,7 +34,6 @@ import {
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { formatWeight, formatNumber, formatTime } from '@/lib/utils';
-import { upsertHourlyEntry } from '@/lib/firestore-entries';
 
 interface Competitor {
   id: string;
@@ -51,58 +51,28 @@ interface HourlyEntry {
   totalWeight: number;
   status: 'empty' | 'in_progress' | 'locked_judge' | 'locked_admin' | 'offline_judge' | 'offline_admin' | 'error';
   timestamp?: Date;
+  source: 'Judge' | 'Admin';
   syncRetries?: number;
   errorMessage?: string;
 }
 
-interface HourStatus {
-  hour: number;
-  entries: { [competitorId: string]: HourlyEntry };
-  completedCount: number;
-}
-
-// Mock competitors data - Sector A (20 competitors)
-const getCompetitorsForSector = (sector: string): Competitor[] => {
-  if (typeof window !== 'undefined') {
-    try {
-      const savedCompetitors = localStorage.getItem('competitors');
-      if (savedCompetitors) {
-        const allCompetitors = JSON.parse(savedCompetitors);
-        return allCompetitors
-          .filter((comp: any) => comp.sector === sector)
-          .map((comp: any) => ({
-            id: comp.id,
-            boxNumber: comp.boxNumber,
-            boxCode: comp.boxCode,
-            name: comp.fullName,
-            equipe: comp.equipe,
-            sector: comp.sector
-          }));
-      }
-      
-    } catch (error) {
-      console.error('Error loading competitors:', error);
-    }
-  }
-  
-  // Fallback - empty array
-  return [];
-};
-
-// Calculate total competitors
-const totalCompetitors = 20; // Always 20 per sector
-
 export default function HourlyDataEntry() {
   const t = useTranslations('judge');
   const { currentUser } = useCurrentUser();
+  const { 
+    competitors: firestoreCompetitors, 
+    hourlyEntries: firestoreHourlyEntries,
+    auditLog,
+    saveHourlyEntry 
+  } = useFirestore();
+  
   const [currentHour, setCurrentHour] = useState(1);
   const [isOnline, setIsOnline] = useState(true);
   const [syncQueue, setSyncQueue] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
   const [showIncompleteOnly, setShowIncompleteOnly] = useState(false);
   const [isEditorCollapsed, setIsEditorCollapsed] = useState(false);
-  
-  const [hourStatuses, setHourStatuses] = useState<{ [hour: number]: HourStatus }>({});
+  const [isOnlineSimulation, setIsOnlineSimulation] = useState(true);
 
   // Editor state
   const [selectedCompetitorId, setSelectedCompetitorId] = useState<string | null>(null);
@@ -110,204 +80,51 @@ export default function HourlyDataEntry() {
   const [totalWeight, setTotalWeight] = useState('');
   const [errors, setErrors] = useState<{ [key: string]: string }>({});
   const [isSaving, setIsSaving] = useState(false);
-  const [isOnlineSimulation, setIsOnlineSimulation] = useState(true);
 
   // Get judge's assigned sector
   const judgeSector = currentUser?.sector || 'A';
 
-  // Dynamic competitors based on judge's assigned sector
-  const [mockCompetitors, setMockCompetitors] = useState<Competitor[]>([]);
-  
-  // Load competitors on mount and listen for changes
+  // Get competitors for judge's sector from Firebase
+  const mockCompetitors = useMemo(() => {
+    return firestoreCompetitors
+      .filter(comp => comp.sector === judgeSector)
+      .map(comp => ({
+        id: comp.id,
+        boxNumber: comp.boxNumber,
+        boxCode: comp.boxCode,
+        name: comp.fullName,
+        equipe: comp.equipe,
+        sector: comp.sector
+      }));
+  }, [firestoreCompetitors, judgeSector]);
+
+  // Get entries for current hour and sector from Firebase
+  const entries = useMemo(() => {
+    const hourEntries: { [competitorId: string]: HourlyEntry } = {};
+    
+    firestoreHourlyEntries
+      .filter(entry => entry.sector === judgeSector && entry.hour === currentHour)
+      .forEach(entry => {
+        hourEntries[entry.competitorId] = {
+          competitorId: entry.competitorId,
+          boxNumber: entry.boxNumber,
+          fishCount: entry.fishCount,
+          totalWeight: entry.totalWeight,
+          status: entry.status,
+          timestamp: entry.timestamp?.toDate ? entry.timestamp.toDate() : new Date(),
+          source: entry.source,
+          syncRetries: 0
+        };
+      });
+    
+    return hourEntries;
+  }, [firestoreHourlyEntries, judgeSector, currentHour]);
+
+  // Set initial online status
   useEffect(() => {
-    const loadCompetitors = () => {
-      const competitors = getCompetitorsForSector(judgeSector);
-      setMockCompetitors(competitors);
-    };
-    
-    loadCompetitors();
-    
-    // Listen for storage changes for live updates
-    const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === 'competitors') {
-        loadCompetitors();
-      }
-    };
-    
-    window.addEventListener('storage', handleStorageChange);
-    
-    return () => {
-      window.removeEventListener('storage', handleStorageChange);
-    };
-  }, [judgeSector]);
-
-  // Load persisted data on mount
-  useEffect(() => {
-    const loadPersistedData = () => {
-      if (typeof window !== 'undefined') {
-        try {
-          // Try to load from localStorage first
-          const allHourlyData = JSON.parse(localStorage.getItem('hourlyData') || '{}');
-          
-          // If localStorage is empty, try sessionStorage backup
-          let dataToUse = allHourlyData;
-          if (Object.keys(allHourlyData).length === 0) {
-            const backupData = sessionStorage.getItem('hourlyDataBackup');
-            if (backupData) {
-              dataToUse = JSON.parse(backupData);
-              // Restore to localStorage
-              localStorage.setItem('hourlyData', JSON.stringify(dataToUse));
-            }
-          }
-          
-          const sectorData = dataToUse[judgeSector] || {};
-          
-          const newHourStatuses: { [hour: number]: HourStatus } = {};
-          
-          for (let h = 1; h <= 7; h++) {
-            const hourData = sectorData[h] || {};
-            
-            // Check for individual entry backups if main data is missing
-            if (Object.keys(hourData).length === 0) {
-              mockCompetitors.forEach(comp => {
-                const entryKey = `hourlyData_${judgeSector}_${h}_${comp.id}`;
-                const savedEntry = localStorage.getItem(entryKey);
-                if (savedEntry) {
-                  try {
-                    hourData[comp.id] = JSON.parse(savedEntry);
-                  } catch (error) {
-                    console.error('Error parsing individual hourly entry:', error);
-                  }
-                }
-              });
-            }
-            
-            const processedEntries: { [key: string]: HourlyEntry } = {};
-            Object.entries(hourData).forEach(([competitorId, entry]: [string, any]) => {
-              processedEntries[competitorId] = {
-                ...entry,
-                timestamp: entry.timestamp ? new Date(entry.timestamp) : undefined
-              };
-            });
-            
-            newHourStatuses[h] = {
-              hour: h,
-              entries: processedEntries,
-              completedCount: Object.values(processedEntries).filter(e => 
-                ['locked_judge', 'locked_admin', 'offline_judge', 'offline_admin'].includes(e.status)
-              ).length
-            };
-          }
-          
-          setHourStatuses(newHourStatuses);
-        } catch (error) {
-          console.error('Failed to load persisted hourly data:', error);
-          
-          // Try to recover from sessionStorage
-          try {
-            const fallbackData = sessionStorage.getItem('hourlyDataBackup');
-            if (fallbackData) {
-              const parsedData = JSON.parse(fallbackData);
-              localStorage.setItem('hourlyData', fallbackData);
-              // Reload with recovered data
-              loadPersistedData();
-            }
-          } catch (recoveryError) {
-            console.error('Failed to recover hourly data from backup:', recoveryError);
-          }
-        }
-      }
-    };
-    
-    // Load persisted data after competitors are loaded
-    if (mockCompetitors.length > 0) {
-      loadPersistedData();
-    }
-  }, [mockCompetitors, judgeSector]);
-
-  // Listen for real-time updates from Admin
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const handleStorageChange = (e: StorageEvent) => {
-        if (e.key === 'hourlyData') {
-          if (!e.newValue || e.newValue === 'null') {
-            // Data was reset - clear all entries
-            setHourStatuses({});
-            setSelectedCompetitorId(null);
-            setFishCount('');
-            setTotalWeight('');
-            setErrors({});
-            
-            // Show reset notification
-            const notification = document.createElement('div');
-            notification.className = 'fixed top-4 right-4 bg-red-600 text-white px-4 py-3 rounded-lg text-sm z-50 shadow-lg';
-            notification.textContent = 'Données horaires réinitialisées par l\'admin';
-            document.body.appendChild(notification);
-            
-            setTimeout(() => {
-              if (document.body.contains(notification)) {
-                document.body.removeChild(notification);
-              }
-            }, 5000);
-            
-            return;
-          }
-          
-          try {
-            const allHourlyData = JSON.parse(e.newValue);
-            const sectorData = allHourlyData[judgeSector] || {};
-            
-            const newHourStatuses: { [hour: number]: HourStatus } = {};
-            
-            for (let h = 1; h <= 7; h++) {
-              const hourData = sectorData[h] || {};
-              
-              const processedEntries: { [key: string]: HourlyEntry } = {};
-              Object.entries(hourData).forEach(([competitorId, entry]: [string, any]) => {
-                processedEntries[competitorId] = {
-                  ...entry,
-                  timestamp: entry.timestamp ? new Date(entry.timestamp) : undefined
-                };
-              });
-              
-              newHourStatuses[h] = {
-                hour: h,
-                entries: processedEntries,
-                completedCount: Object.values(processedEntries).filter(e => 
-                  ['locked_judge', 'locked_admin', 'offline_judge', 'offline_admin'].includes(e.status)
-                ).length
-              };
-            }
-            
-            setHourStatuses(newHourStatuses);
-          } catch (error) {
-            console.error('Failed to sync real-time hourly data:', error);
-          }
-        }
-      };
-      
-      window.addEventListener('storage', handleStorageChange);
-      return () => window.removeEventListener('storage', handleStorageChange);
-    }
-  }, [judgeSector]);
-
-  // Get current hour status
-  const currentHourStatus = useMemo(() => {
-    return hourStatuses[currentHour] || {
-      hour: currentHour,
-      entries: {},
-      completedCount: 0
-    };
-  }, [hourStatuses, currentHour]);
-
-  // Get selected competitor and entry
-  const selectedCompetitor = selectedCompetitorId 
-    ? mockCompetitors.find(c => c.id === selectedCompetitorId)
-    : null;
-  
-  const selectedEntry = selectedCompetitorId 
-    ? currentHourStatus.entries[selectedCompetitorId]
-    : null;
+    setIsOnline(navigator.onLine);
+    setIsOnlineSimulation(navigator.onLine);
+  }, []);
 
   // Filter competitors based on search and incomplete filter
   const filteredCompetitors = useMemo(() => {
@@ -324,72 +141,22 @@ export default function HourlyDataEntry() {
     
     if (showIncompleteOnly) {
       filtered = filtered.filter(comp => {
-        const entry = currentHourStatus.entries[comp.id];
+        const entry = entries[comp.id];
         return !entry || !['locked_judge', 'locked_admin', 'offline_judge', 'offline_admin'].includes(entry.status);
       });
     }
     
     return filtered;
-  }, [mockCompetitors, searchQuery, showIncompleteOnly, currentHourStatus.entries]);
+  }, [mockCompetitors, searchQuery, showIncompleteOnly, entries]);
 
-  // Online/offline detection
-  useEffect(() => {
-    // Set initial online status
-    setIsOnline(navigator.onLine);
-    setIsOnlineSimulation(navigator.onLine);
-    
-    const handleOnline = () => setIsOnline(true);
-    const handleOffline = () => setIsOnline(false);
-
-    // Auto-sync when coming back online
-    const handleOnlineSync = () => {
-      setIsOnline(true);
-      setIsOnlineSimulation(true);
-      
-      // Try to sync any offline entries
-      if (typeof window !== 'undefined') {
-        try {
-          const allHourlyData = JSON.parse(localStorage.getItem('hourlyData') || '{}');
-          const sectorData = allHourlyData[judgeSector] || {};
-          
-          // Update any offline entries to online status
-          for (let hour = 1; hour <= 7; hour++) {
-            const hourData = sectorData[hour] || {};
-            Object.keys(hourData).forEach(competitorId => {
-              const entry = hourData[competitorId];
-              if (entry.status === 'offline_judge') {
-                entry.status = 'locked_judge';
-                entry.timestamp = new Date();
-              }
-            });
-          }
-          
-          if (Object.keys(sectorData).length > 0) {
-            allHourlyData[judgeSector] = sectorData;
-            localStorage.setItem('hourlyData', JSON.stringify(allHourlyData));
-            
-            // Trigger update
-            window.dispatchEvent(new StorageEvent('storage', {
-              key: 'hourlyData',
-              newValue: JSON.stringify(allHourlyData)
-            }));
-          }
-        } catch (error) {
-          console.error('Error syncing offline hourly entries:', error);
-        }
-      }
-    };
-
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
-    window.addEventListener('online', handleOnlineSync);
-
-    return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
-      window.removeEventListener('online', handleOnlineSync);
-    };
-  }, [judgeSector]);
+  // Get selected competitor and entry
+  const selectedCompetitor = selectedCompetitorId 
+    ? mockCompetitors.find(c => c.id === selectedCompetitorId)
+    : null;
+  
+  const selectedEntry = selectedCompetitorId 
+    ? entries[selectedCompetitorId]
+    : null;
 
   // Auto-set weight to 0 when fish count is 0
   useEffect(() => {
@@ -401,7 +168,7 @@ export default function HourlyDataEntry() {
   // Load entry data when competitor is selected
   useEffect(() => {
     if (selectedCompetitorId) {
-      const entry = currentHourStatus.entries[selectedCompetitorId];
+      const entry = entries[selectedCompetitorId];
       if (entry && entry.status !== 'empty') {
         setFishCount(entry.fishCount.toString());
         setTotalWeight(entry.totalWeight.toString());
@@ -411,11 +178,11 @@ export default function HourlyDataEntry() {
       }
       setErrors({});
     }
-  }, [selectedCompetitorId, currentHourStatus.entries]);
+  }, [selectedCompetitorId, entries]);
 
   // Get entry status for competitor
   const getEntryStatus = (competitorId: string): HourlyEntry['status'] => {
-    const entry = currentHourStatus.entries[competitorId];
+    const entry = entries[competitorId];
     return entry?.status || 'empty';
   };
 
@@ -498,7 +265,7 @@ export default function HourlyDataEntry() {
 
   // Handle row selection
   const handleRowSelect = (competitorId: string) => {
-    const entry = currentHourStatus.entries[competitorId];
+    const entry = entries[competitorId];
     // Don't allow selection of locked entries
     if (entry && ['locked_judge', 'locked_admin', 'offline_judge', 'offline_admin'].includes(entry.status)) {
       return;
@@ -512,7 +279,7 @@ export default function HourlyDataEntry() {
     // Sort competitors by box number to ensure proper order
     const sortedCompetitors = [...mockCompetitors].sort((a, b) => a.boxNumber - b.boxNumber);
     const nextMissing = sortedCompetitors.find(comp => {
-      const entry = currentHourStatus.entries[comp.id];
+      const entry = entries[comp.id];
       return !entry || !['locked_judge', 'locked_admin', 'offline_judge', 'offline_admin'].includes(entry.status);
     });
     
@@ -527,19 +294,19 @@ export default function HourlyDataEntry() {
     const newErrors: { [key: string]: string } = {};
 
     if (!fishCount.trim()) {
-      newErrors.fishCount = 'Nombre de prises requis';
+      newErrors.fishCount = t('fishCountRequired');
     } else if (parseInt(fishCount) < 0) {
-      newErrors.fishCount = 'Le nombre de prises doit être ≥ 0';
+      newErrors.fishCount = t('fishCountMustBePositive');
     }
 
     if (!totalWeight.trim()) {
-      newErrors.totalWeight = 'Poids total requis';
+      newErrors.totalWeight = t('totalWeightRequired');
     } else if (parseInt(totalWeight) < 0) {
-      newErrors.totalWeight = 'Le poids total doit être ≥ 0';
+      newErrors.totalWeight = t('totalWeightMustBePositive');
     }
 
     if (parseInt(fishCount) === 0 && parseInt(totalWeight) !== 0) {
-      newErrors.totalWeight = 'Le poids total doit être 0 quand le nombre de prises est 0';
+      newErrors.totalWeight = t('weightMustBeZeroWhenNoFish');
     }
 
     setErrors(newErrors);
@@ -552,85 +319,21 @@ export default function HourlyDataEntry() {
 
     setIsSaving(true);
 
-    const entry: HourlyEntry = {
+    const entryData = {
+      id: `${judgeSector}-${currentHour}-${selectedCompetitor.id}`,
+      sector: judgeSector,
+      hour: currentHour,
       competitorId: selectedCompetitor.id,
       boxNumber: selectedCompetitor.boxNumber,
       fishCount: parseInt(fishCount),
       totalWeight: parseInt(totalWeight),
       status: isOnlineSimulation ? 'locked_judge' : 'offline_judge',
-      timestamp: new Date(),
-      syncRetries: 0,
+      source: 'Judge',
+      updatedBy: currentUser?.username || 'judge'
     };
 
-    // Update state immediately
-    setHourStatuses(prev => ({
-      ...prev,
-      [currentHour]: {
-        ...(prev[currentHour] || { hour: currentHour, entries: {}, completedCount: 0 }),
-        entries: {
-          ...(prev[currentHour]?.entries || {}),
-          [selectedCompetitor.id]: entry
-        },
-        completedCount: Object.values({...(prev[currentHour]?.entries || {}), [selectedCompetitor.id]: entry})
-          .filter(e => ['locked_judge', 'locked_admin', 'offline_judge', 'offline_admin'].includes(e.status)).length
-      }
-    }));
-
-    // Store in localStorage for offline support
-    const updateLocalStorage = (hour: number, competitorId: string, entry: HourlyEntry) => {
-      if (typeof window !== 'undefined') {
-        try {
-          const allHourlyData = JSON.parse(localStorage.getItem('hourlyData') || '{}');
-          if (!allHourlyData[judgeSector]) {
-            allHourlyData[judgeSector] = {};
-          }
-          if (!allHourlyData[judgeSector][hour]) {
-            allHourlyData[judgeSector][hour] = {};
-          }
-          allHourlyData[judgeSector][hour][competitorId] = entry;
-          localStorage.setItem('hourlyData', JSON.stringify(allHourlyData));
-          
-          // Trigger storage event for real-time updates
-          window.dispatchEvent(new StorageEvent('storage', {
-            key: 'hourlyData',
-            newValue: JSON.stringify(allHourlyData)
-          }));
-          
-          // Create backup in sessionStorage for extra safety
-          sessionStorage.setItem('hourlyDataBackup', JSON.stringify(allHourlyData));
-          
-          // Also store individual entry for recovery
-          const entryKey = `hourlyData_${judgeSector}_${hour}_${competitorId}`;
-          localStorage.setItem(entryKey, JSON.stringify(entry));
-        } catch (error) {
-          console.error('Failed to save hourly data to localStorage:', error);
-          
-          // Fallback: try to save in sessionStorage
-          try {
-            const fallbackKey = `fallback_hourlyData_${judgeSector}_${hour}_${competitorId}`;
-            sessionStorage.setItem(fallbackKey, JSON.stringify(entry));
-          } catch (fallbackError) {
-            console.error('Failed to store hourly entry in sessionStorage:', fallbackError);
-          }
-        }
-      }
-    };
-
-    updateLocalStorage(currentHour, selectedCompetitor.id, entry);
-
-    // Save to Firebase
     try {
-      await upsertHourlyEntry({
-        sector: judgeSector,
-        hour: currentHour,
-        competitorId: selectedCompetitor.id,
-        boxNumber: selectedCompetitor.boxNumber,
-        fishCount: parseInt(fishCount),
-        totalWeight: parseInt(totalWeight),
-        status: isOnlineSimulation ? 'locked_judge' : 'offline_judge',
-        source: 'Judge',
-        updatedBy: currentUser?.username || 'judge',
-      });
+      await saveHourlyEntry(entryData);
     } catch (error) {
       console.error('Error saving to Firebase:', error);
     }
@@ -641,9 +344,8 @@ export default function HourlyDataEntry() {
       if (saveAndNext) {
         // Find next incomplete competitor by box order
         const sortedCompetitors = [...mockCompetitors].sort((a, b) => a.boxNumber - b.boxNumber);
-        const updatedEntries = {...currentHourStatus.entries, [selectedCompetitor.id]: entry};
         const nextCompetitor = sortedCompetitors.find(comp => {
-          const compEntry = updatedEntries[comp.id];
+          const compEntry = entries[comp.id];
           return !compEntry || !['locked_judge', 'locked_admin', 'offline_judge', 'offline_admin'].includes(compEntry.status);
         });
         
@@ -676,13 +378,13 @@ export default function HourlyDataEntry() {
             }
           }, 200);
         } else {
-          // All entries complete for this hour
+          // All entries complete
           setSelectedCompetitorId(null);
           
           // Show success banner
           const banner = document.createElement('div');
           banner.className = 'fixed top-20 left-1/2 transform -translate-x-1/2 bg-green-600 text-white px-6 py-3 rounded-lg text-sm z-50 shadow-lg';
-          banner.textContent = `H${currentHour} terminée (20/20)`;
+          banner.textContent = `H${currentHour} terminée (${mockCompetitors.length}/${mockCompetitors.length})`;
           document.body.appendChild(banner);
           
           setTimeout(() => {
@@ -708,42 +410,24 @@ export default function HourlyDataEntry() {
     }, 800);
   };
 
-  // Check if there are any incomplete competitors for current hour
+  // Check if there are any incomplete competitors
   const hasIncompleteCompetitors = useMemo(() => {
     return mockCompetitors.some(comp => {
-      const entry = currentHourStatus.entries[comp.id];
+      const entry = entries[comp.id];
       return !entry || !['locked_judge', 'locked_admin', 'offline_judge', 'offline_admin'].includes(entry.status);
     });
-  }, [mockCompetitors, currentHourStatus.entries]);
+  }, [mockCompetitors, entries]);
 
   // Check if entry is already saved/locked
   const isEntryLocked = selectedEntry && ['locked_judge', 'locked_admin', 'offline_judge', 'offline_admin'].includes(selectedEntry.status);
 
-  // Handle duplicate submission
-  const handleDuplicateSubmission = () => {
-    if (isEntryLocked) {
-      // Show non-blocking notice for duplicate submission
-      const notice = document.createElement('div');
-      notice.className = 'fixed top-4 right-4 bg-blue-600 text-white px-4 py-2 rounded-lg text-sm z-50 shadow-lg';
-      notice.textContent = t('duplicateEntryNoticeGeneral');
-      document.body.appendChild(notice);
-      
-      setTimeout(() => {
-        if (document.body.contains(notice)) {
-          document.body.removeChild(notice);
-        }
-      }, 3000);
-      
-      return true;
-    }
-    return false;
-  };
-
-  // Calculate completion stats for current hour
+  // Calculate completion stats
   const completedEntries = mockCompetitors.filter(comp => {
-    const entry = currentHourStatus.entries[comp.id];
+    const entry = entries[comp.id];
     return entry && ['locked_judge', 'locked_admin', 'offline_judge', 'offline_admin'].includes(entry.status);
   }).length;
+
+  const totalCompetitors = mockCompetitors.length;
 
   return (
     <div className="h-screen flex flex-col">
@@ -758,7 +442,9 @@ export default function HourlyDataEntry() {
                 <WifiOff className="w-4 h-4 text-red-600" />
               )}
               <span className="text-sm font-medium">
-                {isOnlineSimulation ? t('online') : t('offline')}
+                <span className="text-gray-900 dark:text-white">
+                  {isOnlineSimulation ? t('online') : t('offline')}
+                </span>
               </span>
               {syncQueue > 0 && (
                 <Badge variant="secondary" className="bg-yellow-100 text-yellow-800">
@@ -792,32 +478,39 @@ export default function HourlyDataEntry() {
       {/* Hour Tabs */}
       <div className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 px-6 py-3">
         <div className="flex items-center justify-between">
-          <div className="flex space-x-1">
-            {[1, 2, 3, 4, 5, 6, 7].map(hour => {
-              const hourStatus = hourStatuses[hour];
-              const completed = Object.values(hourStatus?.entries || {}).filter(e => 
-                ['locked_judge', 'locked_admin', 'offline_judge', 'offline_admin'].includes(e.status)
-              ).length;
-              const isComplete = completed === 20;
-              
-              return (
-                <Button
-                  key={hour}
-                  variant={currentHour === hour ? 'primary' : 'outline'}
-                  size="sm"
-                  onClick={() => setCurrentHour(hour)}
-                  className="flex items-center px-4 py-2 min-w-[60px]"
-                >
-                  <span className="font-semibold mr-2">H{hour}</span>
-                  {isComplete && (
-                    <Check className="w-4 h-4 text-green-600" />
-                  )}
-                </Button>
-              );
-            })}
+          <div className="flex items-center space-x-3">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setCurrentHour(Math.max(1, currentHour - 1))}
+              disabled={currentHour <= 1}
+              className="text-gray-600 dark:text-gray-300"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </Button>
+            <div className="flex space-x-1">
+            {[1, 2, 3, 4, 5, 6, 7].map(hour => (
+              <Button
+                key={hour}
+                variant={currentHour === hour ? 'primary' : 'outline'}
+                size="sm"
+                onClick={() => setCurrentHour(hour)}
+                className="flex items-center space-x-1"
+              >
+                <span>H{hour}</span>
+              </Button>
+            ))}
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setCurrentHour(Math.min(7, currentHour + 1))}
+              disabled={currentHour >= 7}
+              className="text-gray-600 dark:text-gray-300"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </Button>
           </div>
-          
-          {/* Progress Bar */}
           <div className="flex items-center space-x-3">
             <div className="flex items-center space-x-2">
               <div className="w-32 bg-gray-200 dark:bg-gray-700 rounded-full h-2">
@@ -826,8 +519,8 @@ export default function HourlyDataEntry() {
                   style={{ width: `${(completedEntries / totalCompetitors) * 100}%` }}
                 />
               </div>
-              <span className="text-sm font-medium">
-                {completedEntries}/{totalCompetitors}
+              <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                <span className="text-gray-900 dark:text-white">{completedEntries}/{totalCompetitors}</span>
               </span>
             </div>
           </div>
@@ -897,7 +590,7 @@ export default function HourlyDataEntry() {
               </thead>
               <tbody className="bg-white dark:bg-gray-900 divide-y divide-gray-200 dark:divide-gray-700">
                 {filteredCompetitors.map(competitor => {
-                  const entry = currentHourStatus.entries[competitor.id];
+                  const entry = entries[competitor.id];
                   const status = getEntryStatus(competitor.id);
                   const actionIcon = getActionIcon(status);
                   const isSelected = selectedCompetitorId === competitor.id;
@@ -941,7 +634,7 @@ export default function HourlyDataEntry() {
                         </span>
                       </td>
                       
-                      {/* Club */}
+                      {/* Équipe */}
                       <td className="px-4 py-4 whitespace-nowrap">
                         <span className="text-gray-900 dark:text-white">
                           {competitor.equipe}
@@ -1033,7 +726,7 @@ export default function HourlyDataEntry() {
                           <>
                             <div className="flex items-center justify-between">
                               <span className="text-sm text-gray-600 dark:text-gray-400">Source:</span>
-                              <Badge variant="outline" className="text-xs">Juge</Badge>
+                              <Badge variant="outline" className="text-xs">{selectedEntry.source}</Badge>
                             </div>
                             <div className="flex items-center justify-between">
                               <span className="text-sm text-gray-600 dark:text-gray-400">Dernière MAJ:</span>
@@ -1059,7 +752,7 @@ export default function HourlyDataEntry() {
                             <span className="ml-2 font-medium">{selectedEntry.fishCount}</span>
                           </div>
                           <div>
-                            <span className="text-gray-600 dark:text-gray-400">{t('totalWeight')}:</span>
+                            <span className="text-gray-600 dark:text-gray-400">Poids total:</span>
                             <span className="ml-2 font-medium">{formatWeight(selectedEntry.totalWeight)}</span>
                           </div>
                         </div>
@@ -1081,7 +774,7 @@ export default function HourlyDataEntry() {
                             <span className="ml-2 font-medium">{selectedEntry.fishCount}</span>
                           </div>
                           <div>
-                            <span className="text-gray-600 dark:text-gray-400">{t('totalWeight')}:</span>
+                            <span className="text-gray-600 dark:text-gray-400">Poids total:</span>
                             <span className="ml-2 font-medium">{formatWeight(selectedEntry.totalWeight)}</span>
                           </div>
                         </div>
@@ -1103,7 +796,7 @@ export default function HourlyDataEntry() {
                             <span className="ml-2 font-medium">{selectedEntry.fishCount}</span>
                           </div>
                           <div>
-                            <span className="text-gray-600 dark:text-gray-400">{t('totalWeight')}:</span>
+                            <span className="text-gray-600 dark:text-gray-400">Poids total:</span>
                             <span className="ml-2 font-medium">{formatWeight(selectedEntry.totalWeight)}</span>
                           </div>
                         </div>
@@ -1237,7 +930,7 @@ export default function HourlyDataEntry() {
                 ) : (
                   <div className="flex items-center justify-center h-full text-gray-500 dark:text-gray-400">
                     <div className="text-center">
-                      <Edit className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                      <Fish className="w-12 h-12 mx-auto mb-4 opacity-50" />
                       <p>{t('selectRowToStart')}</p>
                     </div>
                   </div>

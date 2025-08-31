@@ -378,7 +378,21 @@ export default function AdminGrossePrise() {
       {/* Sector Tabs */}
       <div className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 px-6 py-3">
         <div className="flex items-center justify-between">
-          <div className="flex space-x-1">
+          <div className="flex items-center space-x-3">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                const currentIndex = sectors.indexOf(activeSector);
+                const prevIndex = Math.max(0, currentIndex - 1);
+                setActiveSector(sectors[prevIndex]);
+              }}
+              disabled={sectors.indexOf(activeSector) <= 0}
+              className="text-gray-600 dark:text-gray-300"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </Button>
+            <div className="flex space-x-1">
             {sectors.map(sector => (
               <Button
                 key={sector}
@@ -390,6 +404,21 @@ export default function AdminGrossePrise() {
                 Secteur {sector}
               </Button>
             ))}
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                const currentIndex = sectors.indexOf(activeSector);
+                const nextIndex = Math.min(sectors.length - 1, currentIndex + 1);
+                setActiveSector(sectors[nextIndex]);
+              }}
+              disabled={sectors.indexOf(activeSector) >= sectors.length - 1}
+              className="text-gray-600 dark:text-gray-300"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </Button>
+          </div>
           </div>
           
           {/* Progress Bar */}
