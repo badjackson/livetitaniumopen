@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useTranslations } from '@/components/providers/TranslationProvider';
+import { useFirestore } from '@/components/providers/FirestoreSyncProvider';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import Button from '@/components/ui/Button';
@@ -27,10 +28,23 @@ const CountdownOverlay = dynamic(() => import('@/components/ui/CountdownOverlay'
 export default function JudgeDashboard() {
   const t = useTranslations('common');
   const { currentUser } = useCurrentUser();
+  const { 
+    competitors: firestoreCompetitors, 
+    hourlyEntries: firestoreHourlyEntries, 
+    bigCatches: firestoreBigCatches,
+    competitionSettings: firestoreCompetitionSettings
+  } = useFirestore();
   const [currentTime, setCurrentTime] = useState(new Date());
-  const [competitionStartTime] = useState(new Date('2025-01-27T08:00:00'));
   
   const judgeSector = currentUser?.sector || 'A';
+
+  // Get competition start time from Firebase settings
+  const competitionStartTime = useMemo(() => {
+    if (firestoreCompetitionSettings?.startDateTime) {
+      return new Date(firestoreCompetitionSettings.startDateTime);
+    }
+    return new Date('2025-01-27T08:00:00'); // Fallback
+  }, [firestoreCompetitionSettings]);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -46,51 +60,213 @@ export default function JudgeDashboard() {
   const currentHour = Math.floor(timeSinceStart / (1000 * 60 * 60)) + 1;
   const timeUntilStart = competitionStartTime.getTime() - currentTime.getTime();
 
-  // Mock data for dashboard
-  const dashboardStats = [
-    {
-      icon: Clock,
-      label: 'Heure Actuelle',
-      value: competitionStarted ? `H${Math.min(currentHour, 7)}` : 'Not Started',
-      change: competitionStarted ? 'Active' : 'Waiting',
-      changeType: competitionStarted ? 'positive' : 'neutral',
-      color: 'text-ocean-600'
-    },
-    {
-      icon: Users,
-      label: 'Compétiteurs de Mon Secteur',
-      value: '20',
-      change: '20 assigned',
-      changeType: 'neutral',
-      color: 'text-sand-600'
-    },
-    {
-      icon: Fish,
-      label: 'Entrées Terminées',
-      value: '45',
-      change: '+12 today',
-      changeType: 'positive',
-      color: 'text-coral-600'
-    },
-    {
-      icon: CheckCircle,
-      label: 'Heures Terminées',
-      value: '2/7',
-      change: 'H1, H2 done',
-      changeType: 'positive',
-      color: 'text-green-600'
+  // Calculate real stats from Firebase data
+  const dashboardStats = useMemo(() => {
+    const sectorCompetitors = firestoreCompetitors.filter(comp => comp.sector === judgeSector);
+    
+    // Calculate completed entries for judge's sector
+    let completedEntries = 0;
+    for (let hour = 1; hour <= 7; hour++) {
+      const hourEntries = firestoreHourlyEntries.filter(entry => 
+        entry.sector === judgeSector && 
+        entry.hour === hour &&
+        ['locked_judge', 'locked_admin', 'offline_judge', 'offline_admin'].includes(entry.status)
+      );
+      completedEntries += hourEntries.length;
     }
-  ];
+    
+    // Calculate completed hours
+    let completedHours = 0;
+    for (let hour = 1; hour <= 7; hour++) {
+      const hourEntries = firestoreHourlyEntries.filter(entry => 
+        entry.sector === judgeSector && 
+        entry.hour === hour &&
+        ['locked_judge', 'locked_admin', 'offline_judge', 'offline_admin'].includes(entry.status)
+      );
+      if (hourEntries.length === sectorCompetitors.length) {
+        completedHours++;
+      }
+    }
+    
+    return [
+      {
+        icon: Clock,
+        label: 'Heure Actuelle',
+        value: competitionStarted ? `H${Math.min(currentHour, 7)}` : 'Not Started',
+        change: competitionStarted ? 'Active' : 'Waiting',
+        changeType: competitionStarted ? 'positive' : 'neutral',
+        color: 'text-ocean-600'
+      },
+      {
+        icon: Users,
+        label: 'Compétiteurs de Mon Secteur',
+        value: sectorCompetitors.length.toString(),
+        change: `${sectorCompetitors.length} assigned`,
+        changeType: 'neutral',
+        color: 'text-sand-600'
+      },
+      {
+        icon: Fish,
+        label: 'Entrées Terminées',
+        value: completedEntries.toString(),
+        change: `+${completedEntries} today`,
+        changeType: 'positive',
+        color: 'text-coral-600'
+      },
+      {
+        icon: CheckCircle,
+        label: 'Heures Terminées',
+        value: `${completedHours}/7`,
+        change: `H1-H${completedHours} done`,
+        changeType: 'positive',
+        color: 'text-green-600'
+      }
+    ];
+  }, [firestoreCompetitors, firestoreHourlyEntries, judgeSector, competitionStarted, currentHour]);
 
-  const hourlyProgress = [
-    { hour: 1, completed: true, entries: 20, total: 20, unlocked: true },
-    { hour: 2, completed: true, entries: 20, total: 20, unlocked: true },
-    { hour: 3, completed: false, entries: 15, total: 20, unlocked: true },
-    { hour: 4, completed: false, entries: 0, total: 20, unlocked: false },
-    { hour: 5, completed: false, entries: 0, total: 20, unlocked: false },
-    { hour: 6, completed: false, entries: 0, total: 20, unlocked: false },
-    { hour: 7, completed: false, entries: 0, total: 20, unlocked: false },
-  ];
+  // Calculate hourly progress from Firebase data
+  const hourlyProgress = useMemo(() => {
+    const sectorCompetitors = firestoreCompetitors.filter(comp => comp.sector === judgeSector);
+    const totalCompetitors = sectorCompetitors.length;
+    
+    return [1, 2, 3, 4, 5, 6, 7].map(hour => {
+      const hourEntries = firestoreHourlyEntries.filter(entry => 
+        entry.sector === judgeSector && 
+        entry.hour === hour &&
+        ['locked_judge', 'locked_admin', 'offline_judge', 'offline_admin'].includes(entry.status)
+      );
+      
+      const completed = hourEntries.length === totalCompetitors;
+      const unlocked = hour <= currentHour || !competitionStarted;
+      
+      return {
+        hour,
+        completed,
+        entries: hourEntries.length,
+        total: totalCompetitors,
+        unlocked
+      };
+    });
+  }, [firestoreHourlyEntries, firestoreCompetitors, judgeSector, currentHour, competitionStarted]);
+
+  // Calculate sector stats from Firebase data
+  const sectorStats = useMemo(() => {
+    const sectorCompetitors = firestoreCompetitors.filter(comp => comp.sector === judgeSector);
+    
+    let totalFish = 0;
+    let totalWeight = 0;
+    let topCompetitor = 'Aucun';
+    let maxPoints = 0;
+    
+    sectorCompetitors.forEach(comp => {
+      let compFish = 0;
+      let compWeight = 0;
+      
+      // Calculate from hourly entries
+      for (let hour = 1; hour <= 7; hour++) {
+        const entry = firestoreHourlyEntries.find(e => 
+          e.competitorId === comp.id && 
+          e.hour === hour &&
+          ['locked_judge', 'locked_admin', 'offline_judge', 'offline_admin'].includes(e.status)
+        );
+        if (entry) {
+          compFish += entry.fishCount;
+          compWeight += entry.totalWeight;
+        }
+      }
+      
+      totalFish += compFish;
+      totalWeight += compWeight;
+      
+      const points = (compFish * 50) + compWeight;
+      if (points > maxPoints) {
+        maxPoints = points;
+        topCompetitor = comp.fullName;
+      }
+    });
+    
+    return {
+      sector: judgeSector,
+      totalFish,
+      totalWeight: totalWeight / 1000, // Convert to kg
+      avgWeight: totalFish > 0 ? (totalWeight / totalFish / 1000) : 0,
+      topCompetitor,
+      rank: 1 // Could be calculated from cross-sector comparison
+    };
+  }, [firestoreCompetitors, firestoreHourlyEntries, judgeSector]);
+
+  // Generate recent activity from Firebase data
+  const recentActivity = useMemo(() => {
+    const activities: any[] = [];
+    
+    // Get recent hourly entries for judge's sector
+    const recentHourlyEntries = firestoreHourlyEntries
+      .filter(entry => 
+        entry.sector === judgeSector &&
+        ['locked_judge', 'locked_admin', 'offline_judge', 'offline_admin'].includes(entry.status)
+      )
+      .sort((a, b) => {
+        const aTime = a.timestamp?.toDate?.() || new Date(0);
+        const bTime = b.timestamp?.toDate?.() || new Date(0);
+        return bTime.getTime() - aTime.getTime();
+      })
+      .slice(0, 2);
+    
+    recentHourlyEntries.forEach(entry => {
+      const competitor = firestoreCompetitors.find(c => c.id === entry.competitorId);
+      if (competitor) {
+        activities.push({
+          id: `hourly-${entry.id}`,
+          type: 'entry',
+          icon: Fish,
+          message: `Entrée H${entry.hour} terminée pour ${competitor.boxCode} - ${competitor.fullName}`,
+          time: `il y a ${Math.floor((Date.now() - (entry.timestamp?.toDate?.()?.getTime() || 0)) / 60000)} minutes`,
+          priority: 'normal',
+        });
+      }
+    });
+    
+    // Get recent big catches for judge's sector
+    const recentBigCatches = firestoreBigCatches
+      .filter(entry => 
+        entry.sector === judgeSector &&
+        ['locked_judge', 'locked_admin', 'offline_judge', 'offline_admin'].includes(entry.status)
+      )
+      .sort((a, b) => {
+        const aTime = a.timestamp?.toDate?.() || new Date(0);
+        const bTime = b.timestamp?.toDate?.() || new Date(0);
+        return bTime.getTime() - aTime.getTime();
+      })
+      .slice(0, 1);
+    
+    recentBigCatches.forEach(entry => {
+      const competitor = firestoreCompetitors.find(c => c.id === entry.competitorId);
+      if (competitor) {
+        activities.push({
+          id: `bigcatch-${entry.id}`,
+          type: 'complete',
+          icon: Trophy,
+          message: `Grosse prise enregistrée pour ${competitor.boxCode} - ${competitor.fullName} (${entry.biggestCatch}g)`,
+          time: `il y a ${Math.floor((Date.now() - (entry.timestamp?.toDate?.()?.getTime() || 0)) / 60000)} minutes`,
+          priority: 'normal',
+        });
+      }
+    });
+    
+    // Add system messages if no recent activity
+    if (activities.length === 0) {
+      activities.push({
+        id: 'system-1',
+        type: 'hour',
+        icon: Clock,
+        message: `Secteur ${judgeSector} prêt pour la saisie`,
+        time: 'maintenant',
+        priority: 'normal',
+      });
+    }
+    
+    return activities.slice(0, 4); // Limit to 4 items
+  }, [firestoreHourlyEntries, firestoreBigCatches, firestoreCompetitors, judgeSector]);
 
   const getIconColor = (type: string) => {
     switch (type) {
@@ -114,50 +290,6 @@ export default function JudgeDashboard() {
       default:
         return 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300';
     }
-  };
-
-  const recentActivity = [
-    {
-      id: 1,
-      type: 'entry',
-      icon: Fish,
-      message: 'Entrée H3 terminée pour A15 - Mohamed Taieb Korbi',
-      time: 'il y a 2 minutes',
-      priority: 'normal',
-    },
-    {
-      id: 2,
-      type: 'hour',
-      icon: Clock,
-      message: 'Heure H3 déverrouillée pour la saisie',
-      time: 'il y a 5 minutes',
-      priority: 'high',
-    },
-    {
-      id: 3,
-      type: 'complete',
-      icon: CheckCircle,
-      message: 'H2 marquée comme terminée (20/20 entrées)',
-      time: 'il y a 1 heure',
-      priority: 'normal',
-    },
-    {
-      id: 4,
-      type: 'entry',
-      icon: Fish,
-      message: 'Entrée H2 terminée pour A08 - Foued Baccouche',
-      time: 'il y a 1 heure',
-      priority: 'normal',
-    },
-  ];
-
-  const sectorStats = {
-    sector: judgeSector,
-    totalFish: 234,
-    totalWeight: 67.8,
-    avgWeight: 2.9,
-    topCompetitor: 'Sami Said',
-    rank: 1
   };
 
   return (
