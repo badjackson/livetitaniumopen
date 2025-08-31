@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
+import { useFirestore } from '@/components/providers/FirestoreSyncProvider';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import Button from '@/components/ui/Button';
@@ -17,21 +18,90 @@ import {
   EyeOff,
   AlertTriangle,
   Check,
-  X
+  X,
+  Loader2,
+  Mail,
+  MapPin,
+  Key
 } from 'lucide-react';
 import { formatTime } from '@/lib/utils';
+import { FirebaseAuthAdmin, type JudgeAuthData } from '@/lib/firebase-auth-admin';
+
+// Liste des juges par défaut à initialiser dans Firebase Auth
+const defaultJudges: JudgeAuthData[] = [
+  {
+    role: 'admin',
+    sector: null,
+    name: 'Admin User',
+    email: 'admin@titaniumopen.com',
+    password: '2050@5020',
+    status: 'active'
+  },
+  {
+    role: 'judge',
+    sector: 'A',
+    name: 'Juge A',
+    email: 'juge.a@titaniumopen.com',
+    password: '#Juge@A',
+    status: 'active'
+  },
+  {
+    role: 'judge',
+    sector: 'B',
+    name: 'Juge B',
+    email: 'juge.b@titaniumopen.com',
+    password: '#Juge@B',
+    status: 'active'
+  },
+  {
+    role: 'judge',
+    sector: 'C',
+    name: 'Juge C',
+    email: 'juge.c@titaniumopen.com',
+    password: '#Juge@C',
+    status: 'active'
+  },
+  {
+    role: 'judge',
+    sector: 'D',
+    name: 'Juge D',
+    email: 'juge.d@titaniumopen.com',
+    password: '#Juge@D',
+    status: 'active'
+  },
+  {
+    role: 'judge',
+    sector: 'E',
+    name: 'Juge E',
+    email: 'juge.e@titaniumopen.com',
+    password: '#Juge@E',
+    status: 'active'
+  },
+  {
+    role: 'judge',
+    sector: 'F',
+    name: 'Juge F',
+    email: 'juge.f@titaniumopen.com',
+    password: '#Juge@F',
+    status: 'active'
+  }
+];
 
 interface Judge {
   id: string;
-  fullName: string;
+  uid: string;
+  name: string;
   sector: string | null;
   username: string;
-  password: string;
-  lastLogin?: Date;
+  email: string;
+  role: 'admin' | 'judge';
   status: 'active' | 'inactive';
+  createdAt?: any;
+  updatedAt?: any;
 }
 
 export default function AdminJuges() {
+  const { judges: firestoreJudges } = useFirestore();
   const [searchQuery, setSearchQuery] = useState('');
   const [sectorFilter, setSectorFilter] = useState('all');
   const [isEditorCollapsed, setIsEditorCollapsed] = useState(false);
@@ -41,147 +111,100 @@ export default function AdminJuges() {
   const [selectedJudgeId, setSelectedJudgeId] = useState<string | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [formData, setFormData] = useState({
-    fullName: '',
+    name: '',
     sector: '',
-    username: '',
-    password: ''
+    email: '',
+    password: '',
+    role: 'judge' as 'admin' | 'judge'
   });
   const [errors, setErrors] = useState<{ [key: string]: string }>({});
   const [isSaving, setIsSaving] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  const [reassignmentBanner, setReassignmentBanner] = useState<{
-    show: boolean;
-    sector: string;
-    newJudge: string;
-    oldJudge: string;
-  }>({ show: false, sector: '', newJudge: '', oldJudge: '' });
+  const [isLoading, setIsLoading] = useState(true);
+  const [isInitializing, setIsInitializing] = useState(false);
 
   const sectors = ['A', 'B', 'C', 'D', 'E', 'F'];
 
-  // Initial judges data - moved to component scope
-  const initialJudgesData: Judge[] = [
-    {
-      id: 'judge-a',
-      fullName: 'Juge A',
-      sector: 'A',
-      username: 'juge.a',
-      password: '#Juge@A',
-      lastLogin: new Date(Date.now() - 2 * 60 * 60 * 1000),
-      status: 'active'
-    },
-    {
-      id: 'judge-b',
-      fullName: 'Juge B',
-      sector: 'B',
-      username: 'juge.b',
-      password: '#Juge@B',
-      lastLogin: new Date(Date.now() - 3 * 60 * 60 * 1000),
-      status: 'active'
-    },
-    {
-      id: 'judge-c',
-      fullName: 'Juge C',
-      sector: 'C',
-      username: 'juge.c',
-      password: '#Juge@C',
-      lastLogin: new Date(Date.now() - 4 * 60 * 60 * 1000),
-      status: 'active'
-    },
-    {
-      id: 'judge-d',
-      fullName: 'Juge D',
-      sector: 'D',
-      username: 'juge.d',
-      password: '#Juge@D',
-      lastLogin: new Date(Date.now() - 5 * 60 * 60 * 1000),
-      status: 'active'
-    },
-    {
-      id: 'judge-e',
-      fullName: 'Juge E',
-      sector: 'E',
-      username: 'juge.e',
-      password: '#Juge@E',
-      lastLogin: new Date(Date.now() - 6 * 60 * 60 * 1000),
-      status: 'active'
-    },
-    {
-      id: 'judge-f',
-      fullName: 'Juge F',
-      sector: 'F',
-      username: 'juge.f',
-      password: '#Juge@F',
-      lastLogin: new Date(Date.now() - 7 * 60 * 60 * 1000),
-      status: 'active'
-    }
-  ];
-
-  // Initialize with some mock data
+  // Load judges from Firebase
   useEffect(() => {
-    // Load judges from localStorage or use initial data
-    const loadJudges = () => {
-      if (typeof window !== 'undefined') {
-        try {
-          const savedJudges = localStorage.getItem('judges');
-          if (savedJudges) {
-            const parsedJudges = JSON.parse(savedJudges);
-            // Convert lastLogin strings back to Date objects
-            const judgesWithDates = parsedJudges.map((judge: any) => ({
-              ...judge,
-              lastLogin: judge.lastLogin ? new Date(judge.lastLogin) : undefined
-            }));
-            setJudges(judgesWithDates);
-            return judgesWithDates;
+    const loadJudges = async () => {
+      setIsLoading(true);
+      try {
+        // Load from Firestore real-time subscription instead
+        // The useFirestore hook will handle this automatically
+      } catch (error) {
+        console.error('Error loading judges:', error);
+      }
+      setIsLoading(false);
+    };
+
+    // Don't load manually, let Firestore subscription handle it
+    setIsLoading(false);
+  }, []);
+
+  // Also sync with Firestore real-time updates
+  useEffect(() => {
+    // Always sync with Firestore, even if empty
+    const convertedJudges = firestoreJudges.map(judge => ({
+      id: judge.uid,
+      uid: judge.uid,
+      name: judge.name,
+      sector: judge.sector,
+      username: judge.username,
+      email: judge.email,
+      role: judge.role,
+      status: judge.status,
+      createdAt: judge.createdAt,
+      updatedAt: judge.updatedAt
+    }));
+    setJudges(convertedJudges);
+    setIsLoading(false);
+  }, [firestoreJudges]);
+  
+  // Initialize default judges if Firebase Auth is empty
+  const initializeDefaultJudges = async () => {
+    setIsInitializing(true);
+    
+    try {
+      let created = 0;
+      let skipped = 0;
+      let errors = 0;
+      
+      for (const judge of defaultJudges) {
+        const result = await FirebaseAuthAdmin.createJudge(judge);
+        if (result.success) {
+          created++;
+        } else {
+          // Check if it's an "already exists" error
+          if (result.error?.includes('email-already-in-use') || 
+              result.error?.includes('Cette adresse email est déjà utilisée')) {
+            console.warn(`${judge.name} already exists, skipping...`);
+            skipped++;
+          } else {
+            console.error(`Error creating ${judge.name}:`, result.error);
+            errors++;
           }
-        } catch (error) {
-          console.error('Error loading judges from localStorage:', error);
         }
       }
       
-      // Fallback to initial data
-      
-      setJudges(initialJudgesData);
-      
-      // Save initial data to localStorage
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('judges', JSON.stringify(initialJudgesData));
+      // Reload judges list
+      // The Firestore subscription will automatically update the list
+      let message = `✅ ${created} juges créés avec succès`;
+      if (skipped > 0) {
+        message += `\n⚠️ ${skipped} juges déjà existants (ignorés)`;
       }
-      
-      return initialJudgesData;
-    };
-
-    const loadedJudges = loadJudges();
-
-    // Store in localStorage for login system
-    if (typeof window !== 'undefined') {
-      const adminUsers = [
-        {
-          id: 1,
-          name: 'Admin User',
-          username: 'Black@2050',
-          email: 'admin@titanium-f7b50.com',
-          role: 'admin',
-          status: 'active',
-          password: '2050@5020',
-          lastLogin: '2025-01-27 15:30',
-          createdAt: '2025-01-01',
-        },
-        ...loadedJudges.map((judge, index) => ({
-          id: index + 2,
-          name: judge.fullName,
-          username: judge.username,
-          email: `${judge.username}@tunisiaopen.com`,
-          role: 'judge',
-          status: judge.status,
-          password: judge.password,
-          lastLogin: judge.lastLogin ? judge.lastLogin.toISOString().slice(0, 16).replace('T', ' ') : '',
-          createdAt: '2025-01-15',
-        }))
-      ];
-      localStorage.setItem('adminUsers', JSON.stringify(adminUsers));
+      if (errors > 0) {
+        message += `\n❌ ${errors} erreurs`;
+      }
+      alert(message);
+    } catch (error) {
+      console.error('Error initializing judges:', error);
+      alert('Erreur lors de l\'initialisation des juges');
     }
-  }, []);
+    
+    setIsInitializing(false);
+  };
 
   // Filter judges
   const filteredJudges = useMemo(() => {
@@ -190,7 +213,8 @@ export default function AdminJuges() {
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
       filtered = filtered.filter(judge => 
-        judge.fullName.toLowerCase().includes(query) ||
+        judge.name.toLowerCase().includes(query) ||
+        judge.email.toLowerCase().includes(query) ||
         judge.username.toLowerCase().includes(query)
       );
     }
@@ -198,6 +222,8 @@ export default function AdminJuges() {
     if (sectorFilter !== 'all') {
       if (sectorFilter === 'unassigned') {
         filtered = filtered.filter(judge => !judge.sector);
+      } else if (sectorFilter === 'admin') {
+        filtered = filtered.filter(judge => judge.role === 'admin');
       } else {
         filtered = filtered.filter(judge => judge.sector === sectorFilter);
       }
@@ -214,7 +240,7 @@ export default function AdminJuges() {
   // Get available sectors for form
   const availableSectors = useMemo(() => {
     const assignedSectors = judges
-      .filter(j => j.sector && j.id !== selectedJudgeId)
+      .filter(j => j.sector && j.role === 'judge' && j.id !== selectedJudgeId)
       .map(j => j.sector);
     
     return sectors.filter(sector => !assignedSectors.includes(sector));
@@ -228,10 +254,11 @@ export default function AdminJuges() {
     if (judge) {
       setIsEditing(true);
       setFormData({
-        fullName: judge.fullName,
+        name: judge.name,
         sector: judge.sector || '',
-        username: judge.username,
-        password: judge.password
+        email: judge.email,
+        password: '', // Don't pre-fill password for security
+        role: judge.role
       });
     }
     setErrors({});
@@ -242,37 +269,29 @@ export default function AdminJuges() {
     setSelectedJudgeId(null);
     setIsEditing(false);
     setFormData({
-      fullName: '',
+      name: '',
       sector: availableSectors[0] || '',
-      username: '',
-      password: ''
+      email: '',
+      password: '',
+      role: 'judge'
     });
     setErrors({});
     setShowPassword(false);
     setIsEditorCollapsed(false);
   };
 
-  const validateForm = () => {
-    const newErrors: { [key: string]: string } = {};
+  const validateForm = async () => {
+    const newErrors = FirebaseAuthAdmin.validateJudgeData({
+      ...formData,
+      status: 'active'
+    }, isEditing, selectedJudgeId || undefined);
 
-    if (!formData.fullName.trim()) {
-      newErrors.fullName = 'Nom et prénom requis';
-    }
-
-    if (!formData.username.trim()) {
-      newErrors.username = 'Nom d\'utilisateur requis';
-    } else {
-      // Check for duplicate username
-      const existingJudge = judges.find(j => 
-        j.username === formData.username && j.id !== selectedJudgeId
-      );
-      if (existingJudge) {
-        newErrors.username = 'Ce nom d\'utilisateur existe déjà';
+    // Check email availability for new judges or email changes
+    if (formData.email && (!isEditing || (selectedJudge && selectedJudge.email !== formData.email))) {
+      const isAvailable = await FirebaseAuthAdmin.isEmailAvailable(formData.email, selectedJudgeId || undefined);
+      if (!isAvailable) {
+        newErrors.email = 'Cette adresse email est déjà utilisée';
       }
-    }
-
-    if (!formData.password.trim()) {
-      newErrors.password = 'Mot de passe requis';
     }
 
     setErrors(newErrors);
@@ -280,210 +299,82 @@ export default function AdminJuges() {
   };
 
   const handleSave = async () => {
-    if (!validateForm()) return;
+    const isValid = await validateForm();
+    if (!isValid) return;
 
     setIsSaving(true);
 
-    // Check for sector reassignment
-    let reassignmentInfo = null;
-    if (formData.sector) {
-      const currentJudgeInSector = judges.find(j => j.sector === formData.sector && j.id !== selectedJudgeId);
-      if (currentJudgeInSector) {
-        reassignmentInfo = {
-          sector: formData.sector,
-          newJudge: formData.fullName,
-          oldJudge: currentJudgeInSector.fullName
-        };
-      }
-    }
-
-    const judgeData: Judge = {
-      id: selectedJudgeId || `judge-${Date.now()}`,
-      fullName: formData.fullName,
-      sector: formData.sector || null,
-      username: formData.username,
-      password: formData.password,
-      lastLogin: selectedJudge?.lastLogin,
-      status: 'active'
-    };
-
-    // Simulate save
-    setTimeout(() => {
-      setJudges(prev => {
-        let updated = [...prev];
-        
-        // Handle sector reassignment
-        if (reassignmentInfo) {
-          updated = updated.map(j => 
-            j.sector === formData.sector && j.id !== selectedJudgeId
-              ? { ...j, sector: null }
-              : j
-          );
-        }
-        
-        if (isEditing) {
-          const index = updated.findIndex(j => j.id === selectedJudgeId);
-          if (index >= 0) {
-            updated[index] = judgeData;
-          }
-        } else {
-          updated.push(judgeData);
-        }
-        
-        return updated;
-      });
-
-      // Update localStorage for persistence
-      if (typeof window !== 'undefined') {
-        const updatedJudges = [...judges];
-        
-        // Handle sector reassignment
-        if (reassignmentInfo) {
-          for (let i = 0; i < updatedJudges.length; i++) {
-            if (updatedJudges[i].sector === formData.sector && updatedJudges[i].id !== selectedJudgeId) {
-              updatedJudges[i] = { ...updatedJudges[i], sector: null };
-            }
-          }
-        }
-        
-        if (isEditing) {
-          const index = updatedJudges.findIndex(j => j.id === selectedJudgeId);
-          if (index >= 0) {
-            updatedJudges[index] = judgeData;
-          }
-        } else {
-          updatedJudges.push(judgeData);
-        }
-
-        localStorage.setItem('judges', JSON.stringify(updatedJudges));
-
-        // Always ensure default judge logins exist and cannot be overwritten
-        const ensureDefaultJudgeLogins = () => {
-          const adminUsers = JSON.parse(localStorage.getItem('adminUsers') || '[]');
-          const defaultJudgeLogins = [
-            {
-              id: 2,
-              name: 'Juge A',
-              username: 'juge.a',
-              email: 'juge.a@titanium-f7b50.com',
-              role: 'judge',
-              status: 'active',
-              password: '#Juge@A',
-              lastLogin: '',
-              createdAt: '2025-01-15',
-            },
-            {
-              id: 3,
-              name: 'Juge B',
-              username: 'juge.b',
-              email: 'juge.b@titanium-f7b50.com',
-              role: 'judge',
-              status: 'active',
-              password: '#Juge@B',
-              lastLogin: '',
-              createdAt: '2025-01-15',
-            },
-            {
-              id: 4,
-              name: 'Juge C',
-              username: 'juge.c',
-              email: 'juge.c@titanium-f7b50.com',
-              role: 'judge',
-              status: 'active',
-              password: '#Juge@C',
-              lastLogin: '',
-              createdAt: '2025-01-15',
-            },
-            {
-              id: 5,
-              name: 'Juge D',
-              username: 'juge.d',
-              email: 'juge.d@titanium-f7b50.com',
-              role: 'judge',
-              status: 'active',
-              password: '#Juge@D',
-              lastLogin: '',
-              createdAt: '2025-01-15',
-            },
-            {
-              id: 6,
-              name: 'Juge E',
-              username: 'juge.e',
-              email: 'juge.e@titanium-f7b50.com',
-              role: 'judge',
-              status: 'active',
-              password: '#Juge@E',
-              lastLogin: '',
-              createdAt: '2025-01-15',
-            },
-            {
-              id: 7,
-              name: 'Juge F',
-              username: 'juge.f',
-              email: 'juge.f@titanium-f7b50.com',
-              role: 'judge',
-              status: 'active',
-              password: '#Juge@F',
-              lastLogin: '',
-              createdAt: '2025-01-15',
-            },
-          ];
-
-          // Ensure admin user exists
-          const adminUser = {
-            id: 1,
-            name: 'Admin User',
-            username: 'Black@2050',
-            email: 'admin@tunisiaopen.com',
-            role: 'admin',
-            status: 'active',
-            password: '2050@5020',
-            lastLogin: '',
-            createdAt: '2025-01-01',
-          };
-
-          // Always start with admin + default judges
-          const permanentUsers = [adminUser, ...defaultJudgeLogins];
-          
-          // Add any additional custom users (but never overwrite defaults)
-          adminUsers.forEach((user: any) => {
-            const isDefaultUser = permanentUsers.find(u => u.username === user.username);
-            if (!isDefaultUser && user.role !== 'judge') {
-              // Only add non-judge custom users
-              permanentUsers.push(user);
-            }
-          });
-
-          localStorage.setItem('adminUsers', JSON.stringify(permanentUsers));
-          return permanentUsers;
-        };
-
-        ensureDefaultJudgeLogins();
-      }
-
-      // Show reassignment banner if needed
-      if (reassignmentInfo) {
-        setReassignmentBanner({
-          show: true,
-          ...reassignmentInfo
+    try {
+      if (isEditing && selectedJudge) {
+        // Update existing judge
+        const result = await FirebaseAuthAdmin.updateJudge(selectedJudge.uid, {
+          name: formData.name,
+          sector: formData.sector || null,
+          email: formData.email,
+          role: formData.role,
+          status: 'active'
         });
-        setTimeout(() => {
-          setReassignmentBanner(prev => ({ ...prev, show: false }));
-        }, 5000);
+
+        if (result.success) {
+          // Update local state
+          setJudges(prev => prev.map(j => 
+            j.id === selectedJudge.id 
+              ? { 
+                  ...j, 
+                  name: formData.name,
+                  sector: formData.sector || null,
+                  email: formData.email,
+                  username: formData.email.split('@')[0],
+                  role: formData.role
+                }
+              : j
+          ));
+          
+          alert(result.message);
+        } else {
+          alert(`Erreur: ${result.error}`);
+        }
+      } else {
+        // Create new judge
+        const result = await FirebaseAuthAdmin.createJudge({
+          name: formData.name,
+          email: formData.email,
+          password: formData.password,
+          sector: formData.sector || null,
+          role: formData.role,
+          status: 'active'
+        });
+
+        if (result.success) {
+          // Reload judges list
+          const judgesResult = await FirebaseAuthAdmin.getAllJudges();
+          if (judgesResult.success) {
+            setJudges(judgesResult.judges);
+          }
+          
+          alert(result.message);
+        } else {
+          alert(`Erreur: ${result.error}`);
+        }
       }
 
-      setIsSaving(false);
+      // Reset form
       setSelectedJudgeId(null);
       setIsEditing(false);
       setFormData({
-        fullName: '',
+        name: '',
         sector: '',
-        username: '',
-        
-        password: ''
+        email: '',
+        password: '',
+        role: 'judge'
       });
       setErrors({});
-    }, 800);
+    } catch (error) {
+      console.error('Error saving judge:', error);
+      alert('Erreur lors de la sauvegarde');
+    }
+
+    setIsSaving(false);
   };
 
   const handleDelete = async () => {
@@ -491,73 +382,79 @@ export default function AdminJuges() {
 
     setIsSaving(true);
 
-    setTimeout(() => {
-      const updatedJudges = judges.filter(j => j.id !== selectedJudgeId);
-      setJudges(updatedJudges);
+    try {
+      const result = await FirebaseAuthAdmin.deleteJudge(
+        selectedJudge.uid, 
+        selectedJudge.email, 
+        '' // Password not needed for Firestore deletion
+      );
 
-      // Update localStorage
-      if (typeof window !== 'undefined') {
-        const adminUsers = JSON.parse(localStorage.getItem('adminUsers') || '[]');
-        const updatedUsers = adminUsers.filter((user: any) => 
-          !(user.role === 'judge' && user.username === selectedJudge.username)
-        );
-        localStorage.setItem('adminUsers', JSON.stringify(updatedUsers));
-        
-        // Also store the judges list separately for persistence
-        localStorage.setItem('judges', JSON.stringify(updatedJudges));
-        
-        // Create backup in sessionStorage for extra safety
-        sessionStorage.setItem('judgesBackup', JSON.stringify(updatedJudges));
+      if (result.success) {
+        // Update local state
+        setJudges(prev => prev.filter(j => j.id !== selectedJudge.id));
+        alert(result.message);
+      } else {
+        alert(`Erreur: ${result.error}`);
       }
 
-      setIsSaving(false);
       setSelectedJudgeId(null);
       setIsEditing(false);
       setShowDeleteConfirm(false);
       setFormData({
-        fullName: '',
+        name: '',
         sector: '',
-        username: '',
-        password: ''
+        email: '',
+        password: '',
+        role: 'judge'
       });
-    }, 500);
+    } catch (error) {
+      console.error('Error deleting judge:', error);
+      alert('Erreur lors de la suppression');
+    }
+
+    setIsSaving(false);
   };
 
   const handleCancel = () => {
     setSelectedJudgeId(null);
     setIsEditing(false);
     setFormData({
-      fullName: '',
+      name: '',
       sector: '',
-      username: '',
-      password: ''
+      email: '',
+      password: '',
+      role: 'judge'
     });
     setErrors({});
     setShowDeleteConfirm(false);
     setShowPassword(false);
   };
 
+  if (isLoading) {
+    return (
+      <div className="h-screen flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4 text-ocean-600" />
+          <p className="text-gray-600 dark:text-gray-400">Chargement des juges...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="h-screen flex flex-col">
-      {/* Reassignment Banner */}
-      {reassignmentBanner.show && (
-        <div className="bg-red-600 text-white px-6 py-3 text-sm">
-          <div className="flex items-center space-x-2">
-            <AlertTriangle className="w-4 h-4" />
-            <span>
-              Le Secteur {reassignmentBanner.sector} a été réassigné à {reassignmentBanner.newJudge}. 
-              Veuillez réaffecter l'ancien juge ({reassignmentBanner.oldJudge}) à un autre secteur.
-            </span>
-          </div>
-        </div>
-      )}
-
       {/* Header */}
       <div className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 px-6 py-4">
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Juges</h1>
-            <p className="text-gray-600 dark:text-gray-300">Gestion des juges et de leurs identifiants</p>
+            <p className="text-gray-600 dark:text-gray-300">
+              Gestion des juges synchronisée avec Firebase Auth
+            </p>
+          </div>
+          <div className="flex items-center space-x-2">
+            <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse" />
+            <span className="text-sm font-medium text-green-600">Sync Firebase Auth</span>
           </div>
         </div>
       </div>
@@ -566,13 +463,27 @@ export default function AdminJuges() {
       <div className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 p-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-4">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={initializeDefaultJudges}
+              disabled={isInitializing}
+              className="flex items-center space-x-1"
+            >
+              {isInitializing ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Key className="w-4 h-4" />
+              )}
+              <span>Initialiser les 7 juges</span>
+            </Button>
             <div className="flex-1 relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
               <input
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Rechercher par nom ou nom d'utilisateur..."
+                placeholder="Rechercher par nom ou email..."
                 className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm"
               />
             </div>
@@ -581,7 +492,8 @@ export default function AdminJuges() {
               onChange={(e) => setSectorFilter(e.target.value)}
               className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm"
             >
-              <option value="all">Tous les secteurs</option>
+              <option value="all">Tous</option>
+              <option value="admin">Administrateurs</option>
               <option value="unassigned">Non affecté</option>
               {sectors.map(sector => (
                 <option key={sector} value={sector}>Secteur {sector}</option>
@@ -601,7 +513,7 @@ export default function AdminJuges() {
 
       {/* Main Content */}
       <div className="flex-1 flex overflow-hidden">
-        {/* Left Panel - Grid */}
+        {/* Left Panel - Table */}
         <div className="flex-1 flex flex-col min-w-0">
           <div className="flex-1 overflow-auto">
             <table className="w-full">
@@ -614,13 +526,16 @@ export default function AdminJuges() {
                     Nom et Prénom
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    Email
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    Rôle
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                     Secteur
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                    Nom d'utilisateur
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                    Dernière connexion
+                    Dernière MAJ
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                     Statut
@@ -644,13 +559,28 @@ export default function AdminJuges() {
                       </td>
                       <td className="px-4 py-4 whitespace-nowrap">
                         <div className="flex items-center space-x-3">
-                          <div className="w-8 h-8 bg-ocean-600 rounded-full flex items-center justify-center">
+                          <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                            judge.role === 'admin' ? 'bg-red-600' : 'bg-ocean-600'
+                          }`}>
                             <User className="w-4 h-4 text-white" />
                           </div>
                           <span className="font-medium text-gray-900 dark:text-white">
-                            {judge.fullName}
+                            {judge.name}
                           </span>
                         </div>
+                      </td>
+                      <td className="px-4 py-4 whitespace-nowrap">
+                        <div className="flex items-center space-x-2">
+                          <Mail className="w-4 h-4 text-gray-400" />
+                          <span className="font-mono text-sm text-gray-900 dark:text-white">
+                            {judge.email}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-4 whitespace-nowrap">
+                        <Badge className={judge.role === 'admin' ? 'bg-red-100 text-red-800' : 'bg-blue-100 text-blue-800'}>
+                          {judge.role === 'admin' ? 'Administrateur' : 'Juge'}
+                        </Badge>
                       </td>
                       <td className="px-4 py-4 whitespace-nowrap">
                         {judge.sector ? (
@@ -659,22 +589,17 @@ export default function AdminJuges() {
                           </Badge>
                         ) : (
                           <Badge variant="outline" className="text-gray-600">
-                            Non affecté
+                            {judge.role === 'admin' ? 'Global' : 'Non affecté'}
                           </Badge>
                         )}
                       </td>
                       <td className="px-4 py-4 whitespace-nowrap">
-                        <span className="font-mono text-sm text-gray-900 dark:text-white">
-                          {judge.username}
-                        </span>
-                      </td>
-                      <td className="px-4 py-4 whitespace-nowrap">
-                        {judge.lastLogin ? (
+                        {judge.updatedAt ? (
                           <span className="font-mono text-sm text-gray-600 dark:text-gray-300">
-                            {formatTime(judge.lastLogin)}
+                            {formatTime(judge.updatedAt.toDate())}
                           </span>
                         ) : (
-                          <span className="text-gray-400 dark:text-gray-500">Jamais</span>
+                          <span className="text-gray-400 dark:text-gray-500">-</span>
                         )}
                       </td>
                       <td className="px-4 py-4 whitespace-nowrap">
@@ -727,6 +652,25 @@ export default function AdminJuges() {
 
               <div className="flex-1 p-4 overflow-y-auto">
                 <div className="space-y-6">
+                  {/* Role Selection */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      Rôle *
+                    </label>
+                    <select
+                      value={formData.role}
+                      onChange={(e) => setFormData(prev => ({ 
+                        ...prev, 
+                        role: e.target.value as 'admin' | 'judge',
+                        sector: e.target.value === 'admin' ? '' : prev.sector
+                      }))}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                    >
+                      <option value="judge">Juge</option>
+                      <option value="admin">Administrateur</option>
+                    </select>
+                  </div>
+
                   {/* Full Name */}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
@@ -734,54 +678,59 @@ export default function AdminJuges() {
                     </label>
                     <input
                       type="text"
-                      value={formData.fullName}
-                      onChange={(e) => setFormData(prev => ({ ...prev, fullName: e.target.value }))}
+                      value={formData.name}
+                      onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
                       className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
                       placeholder="Nom et prénom du juge"
                     />
-                    {errors.fullName && (
-                      <p className="text-red-500 text-xs mt-1">{errors.fullName}</p>
+                    {errors.name && (
+                      <p className="text-red-500 text-xs mt-1">{errors.name}</p>
                     )}
                   </div>
 
-                  {/* Sector */}
+                  {/* Email */}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                      Secteur
-                    </label>
-                    <select
-                      value={formData.sector}
-                      onChange={(e) => setFormData(prev => ({ ...prev, sector: e.target.value }))}
-                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
-                    >
-                      <option value="">Non affecté</option>
-                      {(isEditing ? sectors : availableSectors).map(sector => (
-                        <option key={sector} value={sector}>Secteur {sector}</option>
-                      ))}
-                    </select>
-                  </div>
-
-                  {/* Username */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                      Nom d'utilisateur *
+                      Nom d'utilisateur (Email) *
                     </label>
                     <input
-                      type="text"
-                      value={formData.username}
-                      onChange={(e) => setFormData(prev => ({ ...prev, username: e.target.value }))}
+                      type="email"
+                      value={formData.email}
+                      onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
                       className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
-                      placeholder="Nom d'utilisateur unique"
+                      placeholder="email@example.com"
                     />
-                    {errors.username && (
-                      <p className="text-red-500 text-xs mt-1">{errors.username}</p>
+                    {errors.email && (
+                      <p className="text-red-500 text-xs mt-1">{errors.email}</p>
                     )}
+                    <p className="text-xs text-gray-500 mt-1">
+                      Utilisé comme nom d'utilisateur pour la connexion
+                    </p>
                   </div>
+
+                  {/* Sector (only for judges) */}
+                  {formData.role === 'judge' && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                        Secteur
+                      </label>
+                      <select
+                        value={formData.sector}
+                        onChange={(e) => setFormData(prev => ({ ...prev, sector: e.target.value }))}
+                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                      >
+                        <option value="">Non affecté</option>
+                        {(isEditing ? sectors : availableSectors).map(sector => (
+                          <option key={sector} value={sector}>Secteur {sector}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
 
                   {/* Password */}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                      Mot de passe *
+                      Mot de passe {!isEditing && '*'}
                     </label>
                     <div className="relative">
                       <input
@@ -789,7 +738,7 @@ export default function AdminJuges() {
                         value={formData.password}
                         onChange={(e) => setFormData(prev => ({ ...prev, password: e.target.value }))}
                         className="w-full px-3 py-2 pr-10 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
-                        placeholder="Mot de passe"
+                        placeholder={isEditing ? "Laisser vide pour ne pas changer" : "Minimum 6 caractères"}
                       />
                       <button
                         type="button"
@@ -802,7 +751,25 @@ export default function AdminJuges() {
                     {errors.password && (
                       <p className="text-red-500 text-xs mt-1">{errors.password}</p>
                     )}
+                    <p className="text-xs text-gray-500 mt-1">
+                      {isEditing ? 'Laisser vide pour conserver le mot de passe actuel' : 'Sera utilisé pour Firebase Auth'}
+                    </p>
                   </div>
+
+                  {/* Firebase Auth Info */}
+                  {isEditing && selectedJudge && (
+                    <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+                      <div className="flex items-center space-x-2 mb-2">
+                        <Key className="w-4 h-4 text-blue-600" />
+                        <span className="text-sm font-medium text-blue-800 dark:text-blue-200">
+                          Firebase Auth UID
+                        </span>
+                      </div>
+                      <p className="text-xs font-mono text-blue-700 dark:text-blue-300">
+                        {selectedJudge.uid}
+                      </p>
+                    </div>
+                  )}
 
                   {/* Action Buttons */}
                   <div className="space-y-2">
@@ -813,11 +780,11 @@ export default function AdminJuges() {
                       disabled={isSaving}
                     >
                       {isSaving ? (
-                        <div className="w-4 h-4 mr-2 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                       ) : (
                         <Save className="w-4 h-4 mr-2" />
                       )}
-                      Sauvegarder
+                      {isEditing ? 'Mettre à jour' : 'Créer dans Firebase Auth'}
                     </Button>
                     
                     {isEditing && (
@@ -858,32 +825,39 @@ export default function AdminJuges() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-gray-600 dark:text-gray-300 mb-6">
-                Êtes-vous sûr de vouloir supprimer <strong>{selectedJudge?.fullName}</strong> ?
-                Cette action est irréversible.
-              </p>
-              <div className="flex space-x-3">
-                <Button
-                  variant="destructive"
-                  onClick={handleDelete}
-                  className="flex-1"
-                  disabled={isSaving}
-                >
-                  {isSaving ? (
-                    <div className="w-4 h-4 mr-2 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                  ) : (
-                    <Check className="w-4 h-4 mr-2" />
-                  )}
-                  Confirmer
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => setShowDeleteConfirm(false)}
-                  className="flex-1"
-                >
-                  <X className="w-4 h-4 mr-2" />
-                  Annuler
-                </Button>
+              <div className="space-y-4">
+                <p className="text-gray-600 dark:text-gray-300">
+                  Êtes-vous sûr de vouloir supprimer <strong>{selectedJudge?.name}</strong> ?
+                </p>
+                <div className="p-3 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg">
+                  <p className="text-sm text-yellow-700 dark:text-yellow-300">
+                    <strong>Note:</strong> Le compte sera supprimé de Firestore. 
+                    La suppression complète de Firebase Auth nécessite l'Admin SDK côté serveur.
+                  </p>
+                </div>
+                <div className="flex space-x-3">
+                  <Button
+                    variant="destructive"
+                    onClick={handleDelete}
+                    className="flex-1"
+                    disabled={isSaving}
+                  >
+                    {isSaving ? (
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    ) : (
+                      <Check className="w-4 h-4 mr-2" />
+                    )}
+                    Confirmer
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => setShowDeleteConfirm(false)}
+                    className="flex-1"
+                  >
+                    <X className="w-4 h-4 mr-2" />
+                    Annuler
+                  </Button>
+                </div>
               </div>
             </CardContent>
           </Card>
