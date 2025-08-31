@@ -24,7 +24,8 @@ import {
   Download
 } from 'lucide-react';
 import { formatWeight, formatNumber, formatTime } from '@/lib/utils';
-import { upsertBigCatch } from '@/lib/firestore-entries';
+import { useFirestore } from '@/components/providers/FirestoreSyncProvider';
+import { useCurrentUser } from '@/hooks/useCurrentUser';
 
 interface Competitor {
   id: string;
@@ -46,43 +47,17 @@ interface GrossePriseEntry {
   errorMessage?: string;
 }
 
-// Mock competitors data - will be replaced with API
-const getCompetitorsBySector = (): { [sector: string]: Competitor[] } => {
-  if (typeof window !== 'undefined') {
-    try {
-      const savedCompetitors = localStorage.getItem('competitors');
-      if (savedCompetitors) {
-        const allCompetitors = JSON.parse(savedCompetitors);
-        const competitorsBySector: { [sector: string]: Competitor[] } = {};
-        
-        allCompetitors.forEach((comp: any) => {
-          if (!competitorsBySector[comp.sector]) {
-            competitorsBySector[comp.sector] = [];
-          }
-          
-          competitorsBySector[comp.sector].push({
-            id: comp.id,
-            boxNumber: comp.boxNumber,
-            boxCode: comp.boxCode,
-            name: comp.fullName,
-            equipe: comp.equipe,
-            sector: comp.sector,
-          });
-        });
-        
-        return competitorsBySector;
-      }
-    } catch (error) {
-      console.error('Error loading competitors:', error);
-    }
-  }
-  
-  // Fallback - empty object
-  return {};
-};
-
 export default function AdminGrossePrise() {
   const searchParams = useSearchParams();
+  const { currentUser } = useCurrentUser();
+  const { 
+    competitors: firestoreCompetitors, 
+    bigCatches: firestoreBigCatches, 
+    saveBigCatch 
+  } = useFirestore();
+  
+  const sectors = ['A', 'B', 'C', 'D', 'E', 'F'];
+  
   const [activeSector, setActiveSector] = useState(searchParams.get('sector') || 'A');
   const [isOnline, setIsOnline] = useState(true);
   const [syncQueue, setSyncQueue] = useState(0);
@@ -92,146 +67,55 @@ export default function AdminGrossePrise() {
   const [isEditorCollapsed, setIsEditorCollapsed] = useState(false);
   const [isOnlineSimulation, setIsOnlineSimulation] = useState(true);
   
-  const [entries, setEntries] = useState<{ [sector: string]: { [competitorId: string]: GrossePriseEntry } }>({});
+  // Convert Firebase competitors to local format
+  const competitorsBySector = useMemo(() => {
+    const grouped: { [sector: string]: Competitor[] } = {};
+    firestoreCompetitors.forEach(comp => {
+      if (!grouped[comp.sector]) {
+        grouped[comp.sector] = [];
+      }
+      grouped[comp.sector].push({
+        id: comp.id,
+        boxNumber: comp.boxNumber,
+        boxCode: comp.boxCode,
+        name: comp.fullName,
+        equipe: comp.equipe,
+        sector: comp.sector
+      });
+    });
+    return grouped;
+  }, [firestoreCompetitors]);
 
-  // Dynamic competitors
-  const [mockCompetitorsBySector, setMockCompetitorsBySector] = useState<{ [sector: string]: Competitor[] }>({});
-  
-  // Load persisted data on mount
-  useEffect(() => {
-    if (Object.keys(mockCompetitorsBySector).length > 0) {
-      const loadPersistedData = () => {
-        if (typeof window !== 'undefined') {
-          try {
-            // Try to load from localStorage first
-            let allGrossePriseData = JSON.parse(localStorage.getItem('grossePriseData') || '{}');
-            
-            // If localStorage is empty, try sessionStorage backup
-            if (Object.keys(allGrossePriseData).length === 0) {
-              const backupData = sessionStorage.getItem('grossePriseDataBackup');
-              if (backupData) {
-                allGrossePriseData = JSON.parse(backupData);
-                // Restore to localStorage
-                localStorage.setItem('grossePriseData', JSON.stringify(allGrossePriseData));
-              }
-            }
-            
-            const newEntries: { [sector: string]: { [competitorId: string]: GrossePriseEntry } } = {};
-            
-            sectors.forEach(sector => {
-              newEntries[sector] = {};
-              const sectorData = allGrossePriseData[sector] || {};
-              
-              // Check for individual entry backups if main data is missing
-              if (Object.keys(sectorData).length === 0) {
-                mockCompetitorsBySector[sector]?.forEach(comp => {
-                  const entryKey = `grossePrise_${sector}_${comp.id}`;
-                  const savedEntry = localStorage.getItem(entryKey);
-                  if (savedEntry) {
-                    try {
-                      sectorData[comp.id] = JSON.parse(savedEntry);
-                    } catch (error) {
-                      console.error('Error parsing individual grosse prise entry:', error);
-                    }
-                  }
-                });
-              }
-              
-              Object.entries(sectorData).forEach(([competitorId, entry]: [string, any]) => {
-                newEntries[sector][competitorId] = {
-                  ...entry,
-                  timestamp: entry.timestamp ? new Date(entry.timestamp) : undefined
-                };
-              });
-            });
-            
-            setEntries(newEntries);
-          } catch (error) {
-            console.error('Failed to load persisted grosse prise data:', error);
-            
-            // Try to recover from sessionStorage
-            try {
-              const fallbackData = sessionStorage.getItem('grossePriseDataBackup');
-              if (fallbackData) {
-                const parsedData = JSON.parse(fallbackData);
-                localStorage.setItem('grossePriseData', fallbackData);
-                // Reload with recovered data
-                loadPersistedData();
-              }
-            } catch (recoveryError) {
-              console.error('Failed to recover grosse prise from backup:', recoveryError);
-            }
-          }
-        }
-      };
+  // Convert Firebase big catches to local format
+  const entries = useMemo(() => {
+    const entriesBySector: { [sector: string]: { [competitorId: string]: GrossePriseEntry } } = {};
+    
+    sectors.forEach(sector => {
+      entriesBySector[sector] = {};
       
-      // Initial load
-      loadPersistedData();
-    }
-  }, [mockCompetitorsBySector]);
+      // Get entries for this sector
+      const sectorEntries = firestoreBigCatches.filter(entry => entry.sector === sector);
+      
+      sectorEntries.forEach(entry => {
+        entriesBySector[sector][entry.competitorId] = {
+          competitorId: entry.competitorId,
+          boxNumber: entry.boxNumber,
+          biggestCatch: entry.biggestCatch,
+          status: entry.status,
+          timestamp: entry.timestamp?.toDate ? entry.timestamp.toDate() : new Date(),
+          source: entry.source,
+          syncRetries: 0
+        };
+      });
+    });
+    
+    return entriesBySector;
+  }, [firestoreBigCatches]);
 
-  // Load competitors on mount and listen for changes
+  // Set initial online status
   useEffect(() => {
-    const loadCompetitors = () => {
-      const competitors = getCompetitorsBySector();
-      setMockCompetitorsBySector(competitors);
-    };
-    
-    loadCompetitors();
-    
-    // Listen for storage changes for live updates
-    const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === 'competitors') {
-    // Set initial online status
     setIsOnline(navigator.onLine);
     setIsOnlineSimulation(navigator.onLine);
-    
-        loadCompetitors();
-      }
-    };
-    // Auto-sync when coming back online
-    const handleOnlineSync = () => {
-      setIsOnline(true);
-      setIsOnlineSimulation(true);
-      
-      // Try to sync any offline entries
-      if (typeof window !== 'undefined') {
-        try {
-          const allGrossePriseData = JSON.parse(localStorage.getItem('grossePriseData') || '{}');
-          
-          // Update any offline entries to online status
-          Object.keys(allGrossePriseData).forEach(sector => {
-            const sectorData = allGrossePriseData[sector] || {};
-            Object.keys(sectorData).forEach(competitorId => {
-              const entry = sectorData[competitorId];
-              if (entry.status === 'offline_admin') {
-                entry.status = 'locked_admin';
-                entry.timestamp = new Date();
-              }
-            });
-          });
-          
-          localStorage.setItem('grossePriseData', JSON.stringify(allGrossePriseData));
-          
-          // Trigger update
-          window.dispatchEvent(new StorageEvent('storage', {
-            key: 'grossePriseData',
-            newValue: JSON.stringify(allGrossePriseData)
-          }));
-        } catch (error) {
-          console.error('Error syncing offline grosse prise entries:', error);
-        }
-      }
-    };
-
-    
-    window.addEventListener('storage', handleStorageChange);
-    window.addEventListener('online', handleOnlineSync);
-    
-    return () => {
-      window.removeEventListener('storage', handleStorageChange);
-      window.removeEventListener('online', handleOnlineSync);
-    };
   }, []);
 
   // Editor state
@@ -240,8 +124,7 @@ export default function AdminGrossePrise() {
   const [errors, setErrors] = useState<{ [key: string]: string }>({});
   const [isSaving, setIsSaving] = useState(false);
 
-  const sectors = ['A', 'B', 'C', 'D', 'E', 'F'];
-  const currentCompetitors = mockCompetitorsBySector[activeSector] || [];
+  const currentCompetitors = competitorsBySector[activeSector] || [];
   
   // Get current sector entries
   const currentEntries = entries[activeSector] || {};
@@ -255,97 +138,6 @@ export default function AdminGrossePrise() {
     ? currentEntries[selectedCompetitorId]
     : null;
 
-  // Listen for real-time updates from Judge
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const handleStorageChange = (e: StorageEvent) => {
-        if (e.key === 'grossePriseData') {
-          if (!e.newValue || e.newValue === 'null') {
-            // Data was reset - clear all entries
-            setEntries({});
-            setSelectedCompetitorId(null);
-            setBiggestCatch('');
-            setErrors({});
-            
-            // Show reset notification
-            const notification = document.createElement('div');
-            notification.className = 'fixed top-4 right-4 bg-blue-600 text-white px-4 py-3 rounded-lg text-sm z-50 shadow-lg';
-            notification.textContent = 'Données de grosse prise réinitialisées';
-            document.body.appendChild(notification);
-            
-            setTimeout(() => {
-              if (document.body.contains(notification)) {
-                document.body.removeChild(notification);
-              }
-            }, 5000);
-            
-            return;
-          }
-          
-          try {
-            const allGrossePriseData = JSON.parse(e.newValue);
-            const newEntries: { [sector: string]: { [competitorId: string]: GrossePriseEntry } } = {};
-            
-            sectors.forEach(sector => {
-              newEntries[sector] = {};
-              const sectorData = allGrossePriseData[sector] || {};
-              
-              Object.entries(sectorData).forEach(([competitorId, entry]: [string, any]) => {
-                newEntries[sector][competitorId] = {
-                  ...entry,
-                  timestamp: entry.timestamp ? new Date(entry.timestamp) : undefined
-                };
-              });
-            });
-            
-            setEntries(newEntries);
-          } catch (error) {
-            console.error('Failed to sync real-time grosse prise data:', error);
-          }
-        }
-      };
-      
-      window.addEventListener('storage', handleStorageChange);
-      return () => window.removeEventListener('storage', handleStorageChange);
-    }
-  }, []);
-
-  // Update localStorage when entries change
-  const updateLocalStorage = (sector: string, competitorId: string, entry: GrossePriseEntry) => {
-    if (typeof window !== 'undefined') {
-      try {
-        const allGrossePriseData = JSON.parse(localStorage.getItem('grossePriseData') || '{}');
-        if (!allGrossePriseData[sector]) allGrossePriseData[sector] = {};
-        
-        allGrossePriseData[sector][competitorId] = entry;
-        
-        localStorage.setItem('grossePriseData', JSON.stringify(allGrossePriseData));
-        
-        // Create backup in sessionStorage for extra safety
-        sessionStorage.setItem('grossePriseDataBackup', JSON.stringify(allGrossePriseData));
-        
-        // Also store individual entry for recovery
-        const entryKey = `grossePrise_${sector}_${competitorId}`;
-        localStorage.setItem(entryKey, JSON.stringify(entry));
-        
-        // Trigger storage event for real-time updates
-        window.dispatchEvent(new StorageEvent('storage', {
-          key: 'grossePriseData',
-          newValue: JSON.stringify(allGrossePriseData)
-        }));
-      } catch (error) {
-        console.error('Failed to store grosse prise entry locally:', error);
-        
-        // Fallback: try to save in sessionStorage
-        try {
-          const fallbackKey = `fallback_grossePrise_${sector}_${competitorId}`;
-          sessionStorage.setItem(fallbackKey, JSON.stringify(entry));
-        } catch (fallbackError) {
-          console.error('Failed to store grosse prise entry in sessionStorage:', fallbackError);
-        }
-      }
-    }
-  };
   // Filter competitors
   const filteredCompetitors = useMemo(() => {
     let filtered = currentCompetitors;
@@ -484,39 +276,19 @@ export default function AdminGrossePrise() {
 
     setIsSaving(true);
 
-    const entry: GrossePriseEntry = {
+    const entryData = {
+      id: `${activeSector}-${selectedCompetitor.id}`,
+      sector: activeSector,
       competitorId: selectedCompetitor.id,
       boxNumber: selectedCompetitor.boxNumber,
       biggestCatch: parseInt(biggestCatch),
-      status: isOnlineSimulation ? 'locked_admin' : 'offline_admin',
-      timestamp: new Date(),
-      source: 'Admin',
-      syncRetries: 0,
+      status: (isOnlineSimulation ? 'locked_admin' : 'offline_admin') as 'error' | 'empty' | 'in_progress' | 'locked_judge' | 'locked_admin' | 'offline_judge' | 'offline_admin',
+      source: 'Admin' as 'Judge' | 'Admin',
+      updatedBy: currentUser?.username || 'admin'
     };
 
-    // Update state
-    setEntries(prev => ({
-      ...prev,
-      [activeSector]: {
-        ...(prev[activeSector] || {}),
-        [selectedCompetitor.id]: entry
-      }
-    }));
-
-    // Update localStorage
-    updateLocalStorage(activeSector, selectedCompetitor.id, entry);
-
-    // Save to Firebase
     try {
-      await upsertBigCatch({
-        sector: activeSector,
-        competitorId: selectedCompetitor.id,
-        boxNumber: selectedCompetitor.boxNumber,
-        biggestCatch: parseInt(biggestCatch),
-        status: isOnlineSimulation ? 'locked_admin' : 'offline_admin',
-        source: 'Admin',
-        updatedBy: 'admin',
-      });
+      await saveBigCatch(entryData);
       console.log('Big catch data saved to Firebase successfully');
     } catch (error) {
       console.error('Error saving big catch to Firebase:', error instanceof Error ? error.message : error);
@@ -530,12 +302,10 @@ export default function AdminGrossePrise() {
       
       if (saveAndNext) {
         // Find next incomplete competitor in box order
-        const sortedCompetitors = [...currentCompetitors].sort((a, b) => a.boxNumber - b.boxNumber);
-        const updatedEntries = {...currentEntries, [selectedCompetitor.id]: entry};
-        const nextCompetitor = sortedCompetitors.find(comp => {
-          const compEntry = updatedEntries[comp.id];
-          return !compEntry || !['locked_judge', 'locked_admin', 'offline_judge', 'offline_admin'].includes(compEntry.status);
-        });
+        const nextCompetitor = currentCompetitors.find(comp => 
+          !currentEntries[comp.id] || 
+          !['locked_judge', 'locked_admin', 'offline_judge', 'offline_admin'].includes(currentEntries[comp.id].status)
+        );
         
         if (nextCompetitor) {
           setSelectedCompetitorId(nextCompetitor.id);
@@ -633,6 +403,9 @@ export default function AdminGrossePrise() {
               </div>
               <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
                 <span className="text-gray-900 dark:text-white">{completedEntries}/20</span>
+              </span>
+              <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                <span className="text-gray-900 dark:text-white">{completedEntries}/{currentCompetitors.length}</span>
               </span>
             </div>
           </div>
