@@ -16,34 +16,7 @@ import {
   WifiOff
 } from 'lucide-react';
 import { formatWeight, formatNumber, formatTime } from '@/lib/utils';
-
-interface Competitor {
-  id: string;
-  boxNumber: number;
-  boxCode: string;
-  name: string;
-  equipe: string;
-  sector: string;
-}
-
-interface HourlyEntry {
-  competitorId: string;
-  boxNumber: number;
-  fishCount: number;
-  totalWeight: number;
-  status: string;
-  timestamp?: Date;
-  source: 'Judge' | 'Admin';
-}
-
-interface GrossePriseEntry {
-  competitorId: string;
-  boxNumber: number;
-  biggestCatch: number;
-  status: string;
-  timestamp?: Date;
-  source: 'Judge' | 'Admin';
-}
+import { useFirestore } from '@/components/providers/FirestoreSyncProvider';
 
 interface CalculatedCompetitor {
   id: string;
@@ -62,134 +35,31 @@ interface CalculatedCompetitor {
   lastValidEntry?: Date;
 }
 
-// Get competitors from localStorage
-const getAllCompetitors = (): Competitor[] => {
-  if (typeof window !== 'undefined') {
-    try {
-      const savedCompetitors = localStorage.getItem('competitors');
-      if (savedCompetitors) {
-        const allCompetitors = JSON.parse(savedCompetitors);
-        return allCompetitors.map((comp: any) => ({
-          id: comp.id,
-          boxNumber: comp.boxNumber,
-          boxCode: comp.boxCode,
-          name: comp.fullName,
-          equipe: comp.equipe,
-          sector: comp.sector,
-        }));
-      }
-    } catch (error) {
-      console.error('Error loading competitors:', error);
-    }
-  }
-  
-  return [];
-};
-
-// Get hourly data from localStorage
-const getHourlyData = (): { [sector: string]: { [hour: number]: { [competitorId: string]: HourlyEntry } } } => {
-  if (typeof window !== 'undefined') {
-    try {
-      const savedData = localStorage.getItem('hourlyData');
-      if (savedData) {
-        const allHourlyData = JSON.parse(savedData);
-        // Convert timestamp strings back to Date objects
-        Object.keys(allHourlyData).forEach(sector => {
-          Object.keys(allHourlyData[sector] || {}).forEach(hour => {
-            Object.keys(allHourlyData[sector][hour] || {}).forEach(competitorId => {
-              const entry = allHourlyData[sector][hour][competitorId];
-              if (entry.timestamp) {
-                entry.timestamp = new Date(entry.timestamp);
-              }
-            });
-          });
-        });
-        return allHourlyData;
-      }
-    } catch (error) {
-      console.error('Error loading hourly data:', error);
-    }
-  }
-  
-  return {};
-};
-
-// Get grosse prise data from localStorage
-const getGrossePriseData = (): { [sector: string]: { [competitorId: string]: GrossePriseEntry } } => {
-  if (typeof window !== 'undefined') {
-    try {
-      const savedData = localStorage.getItem('grossePriseData');
-      if (savedData) {
-        const allGrossePriseData = JSON.parse(savedData);
-        // Convert timestamp strings back to Date objects
-        Object.keys(allGrossePriseData).forEach(sector => {
-          Object.keys(allGrossePriseData[sector] || {}).forEach(competitorId => {
-            const entry = allGrossePriseData[sector][competitorId];
-            if (entry.timestamp) {
-              entry.timestamp = new Date(entry.timestamp);
-            }
-          });
-        });
-        return allGrossePriseData;
-      }
-    } catch (error) {
-      console.error('Error loading grosse prise data:', error);
-    }
-  }
-  
-  return {};
-};
-
 export default function AdminClassementGeneral() {
-  const [isOnline, setIsOnline] = useState(true);
+  const { competitors, hourlyEntries, bigCatches } = useFirestore();
   const [searchQuery, setSearchQuery] = useState('');
   const [sortField, setSortField] = useState<string>('classementGeneral');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   const [sectorFilter, setSectorFilter] = useState<string>('all');
   const [filterType, setFilterType] = useState<string>('all');
-  
-  // Data states
-  const [allCompetitors, setAllCompetitors] = useState<Competitor[]>([]);
-  const [hourlyData, setHourlyData] = useState<{ [sector: string]: { [hour: number]: { [competitorId: string]: HourlyEntry } } }>({});
-  const [grossePriseData, setGrossePriseData] = useState<{ [sector: string]: { [competitorId: string]: GrossePriseEntry } }>({});
+  const [isOnline, setIsOnline] = useState(true);
 
   const sectors = ['A', 'B', 'C', 'D', 'E', 'F'];
 
-  // Load initial data
+  // Set initial online status
   useEffect(() => {
-    const loadData = () => {
-      setAllCompetitors(getAllCompetitors());
-      setHourlyData(getHourlyData());
-      setGrossePriseData(getGrossePriseData());
-    };
+    setIsOnline(navigator.onLine);
     
-    loadData();
-  }, []);
-
-  // Listen for real-time updates
-  useEffect(() => {
-    const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === 'competitors') {
-        setAllCompetitors(getAllCompetitors());
-      } else if (e.key === 'hourlyData') {
-        if (!e.newValue || e.newValue === 'null') {
-          // Data was reset - reload empty data
-          setHourlyData({});
-          return;
-        }
-        setHourlyData(getHourlyData());
-      } else if (e.key === 'grossePriseData') {
-        if (!e.newValue || e.newValue === 'null') {
-          // Data was reset - reload empty data
-          setGrossePriseData({});
-          return;
-        }
-        setGrossePriseData(getGrossePriseData());
-      }
-    };
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
     
-    window.addEventListener('storage', handleStorageChange);
-    return () => window.removeEventListener('storage', handleStorageChange);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
   }, []);
 
   // Calculate live data for all competitors
@@ -198,9 +68,7 @@ export default function AdminClassementGeneral() {
     const competitorsBySector: { [sector: string]: CalculatedCompetitor[] } = {};
     
     sectors.forEach(sector => {
-      const sectorCompetitors = allCompetitors.filter(comp => comp.sector === sector);
-      const sectorHourlyData = hourlyData[sector] || {};
-      const sectorGrossePriseData = grossePriseData[sector] || {};
+      const sectorCompetitors = competitors.filter(comp => comp.sector === sector);
       
       // Calculate totals for each competitor in this sector
       const sectorCalculated: CalculatedCompetitor[] = sectorCompetitors.map(competitor => {
@@ -210,24 +78,29 @@ export default function AdminClassementGeneral() {
         
         // Sum across all 7 hours
         for (let hour = 1; hour <= 7; hour++) {
-          const hourData = sectorHourlyData[hour] || {};
-          const entry = hourData[competitor.id];
+          const entries = hourlyEntries.filter(entry => 
+            entry.competitorId === competitor.id && 
+            entry.hour === hour &&
+            ['locked_judge', 'locked_admin', 'offline_judge', 'offline_admin'].includes(entry.status)
+          );
           
-          if (entry && ['locked_judge', 'locked_admin', 'offline_judge', 'offline_admin'].includes(entry.status)) {
+          entries.forEach(entry => {
             nbPrisesGlobal += entry.fishCount;
             poidsTotal += entry.totalWeight;
             
-            if (entry.timestamp && (!lastValidEntry || entry.timestamp > lastValidEntry)) {
-              lastValidEntry = entry.timestamp;
+            const entryDate = entry.timestamp?.toDate ? entry.timestamp.toDate() : new Date(entry.timestamp);
+            if (entryDate && (!lastValidEntry || entryDate > lastValidEntry)) {
+              lastValidEntry = entryDate;
             }
-          }
+          });
         }
         
         // Get grosse prise
-        const grossePriseEntry = sectorGrossePriseData[competitor.id];
-        const grossePrise = grossePriseEntry && ['locked_judge', 'locked_admin', 'offline_judge', 'offline_admin'].includes(grossePriseEntry.status) 
-          ? grossePriseEntry.biggestCatch 
-          : 0;
+        const grossePriseEntry = bigCatches.find(entry => 
+          entry.competitorId === competitor.id &&
+          ['locked_judge', 'locked_admin', 'offline_judge', 'offline_admin'].includes(entry.status)
+        );
+        const grossePrise = grossePriseEntry ? grossePriseEntry.biggestCatch : 0;
         
         // Calculate points
         const points = (nbPrisesGlobal * 50) + poidsTotal;
@@ -236,7 +109,7 @@ export default function AdminClassementGeneral() {
           id: competitor.id,
           boxNumber: competitor.boxNumber,
           boxCode: competitor.boxCode,
-          name: competitor.name,
+          name: competitor.fullName,
           equipe: competitor.equipe,
           sector: competitor.sector,
           nbPrisesGlobal,
@@ -264,26 +137,7 @@ export default function AdminClassementGeneral() {
       
       // Sort by points (desc), then by grosse prise (desc), then by earliest last valid entry for sector ranking
       const sectorSorted = [...sectorCalculated].sort((a, b) => {
-        // Primary: Points (desc)
-        if (b.points !== a.points) {
-          return b.points - a.points;
-        }
-        
-        // Tie-breaker 1: Grosse prise (desc)
-        if (b.grossePrise !== a.grossePrise) {
-          return b.grossePrise - a.grossePrise;
-        }
-        
-        // Tie-breaker 2: Earliest last valid entry (asc)
-        if (a.lastValidEntry && b.lastValidEntry) {
-          return a.lastValidEntry.getTime() - b.lastValidEntry.getTime();
-        } else if (a.lastValidEntry) {
-          return -1; // a has entry, b doesn't - a wins
-        } else if (b.lastValidEntry) {
-          return 1; // b has entry, a doesn't - b wins
-        }
-        
-        return 0;
+        return b.points - a.points; // Sort by Points (desc) only
       });
       
       // Assign sector rankings
@@ -312,31 +166,11 @@ export default function AdminClassementGeneral() {
       
       // Sort this place group by coefficient (desc), then tie-breakers
       placeGroup.sort((a, b) => {
-        // Primary: Coefficient secteur (desc)
+        // Sort by Coefficient secteur (desc), then by Grosse prise (desc)
         if (b.coefficientSecteur !== a.coefficientSecteur) {
           return b.coefficientSecteur - a.coefficientSecteur;
         }
-        
-        // Tie-breaker 1: Grosse prise (desc)
-        if (b.grossePrise !== a.grossePrise) {
-          return b.grossePrise - a.grossePrise;
-        }
-        
-        // Tie-breaker 2: Total Points (desc)
-        if (b.points !== a.points) {
-          return b.points - a.points;
-        }
-        
-        // Tie-breaker 3: Earliest last valid entry (asc)
-        if (a.lastValidEntry && b.lastValidEntry) {
-          return a.lastValidEntry.getTime() - b.lastValidEntry.getTime();
-        } else if (a.lastValidEntry) {
-          return -1;
-        } else if (b.lastValidEntry) {
-          return 1;
-        }
-        
-        return 0;
+        return b.grossePrise - a.grossePrise;
       });
       
       // Add to general ranking
@@ -357,7 +191,7 @@ export default function AdminClassementGeneral() {
     });
     
     return [...nonZeroCompetitors, ...zeroCoeffCompetitors];
-  }, [allCompetitors, hourlyData, grossePriseData, sectors]);
+  }, [competitors, hourlyEntries, bigCatches, sectors]);
 
   // Apply sorting
   const sortedCompetitors = useMemo(() => {
@@ -717,33 +551,49 @@ export default function AdminClassementGeneral() {
                   {/* Classement secteur */}
                   <td className="px-4 py-4 whitespace-nowrap">
                     <div className="flex items-center space-x-2">
-                      {competitor.classementSecteur <= 3 && getRankIcon(competitor.classementSecteur)}
-                      <span className="font-semibold text-gray-900 dark:text-gray-100">
-                        {competitor.classementSecteur}
-                      </span>
+                      {competitor.nbPrisesGlobal === 0 && competitor.poidsTotal === 0 && competitor.grossePrise === 0 ? (
+                        <span className="text-gray-400 dark:text-gray-500">—</span>
+                      ) : (
+                        <>
+                          {competitor.classementSecteur <= 3 && getRankIcon(competitor.classementSecteur)}
+                          <span className="font-semibold text-gray-900 dark:text-gray-100">
+                            {competitor.classementSecteur}
+                          </span>
+                        </>
+                      )}
                     </div>
                   </td>
                   
                   {/* Coefficient secteur */}
                   <td className="px-4 py-4 whitespace-nowrap">
-                    <span className="font-mono text-sm text-gray-800 dark:text-gray-200">
-                      {formatCoefficient(competitor.coefficientSecteur)}
-                    </span>
+                    {competitor.nbPrisesGlobal === 0 && competitor.poidsTotal === 0 && competitor.grossePrise === 0 ? (
+                      <span className="text-gray-400 dark:text-gray-500">—</span>
+                    ) : (
+                      <span className="font-mono text-sm text-gray-800 dark:text-gray-200">
+                        {formatCoefficient(competitor.coefficientSecteur)}
+                      </span>
+                    )}
                   </td>
                   
                   {/* Classement Général */}
                   <td className="px-4 py-4 whitespace-nowrap">
                     <div className="flex items-center space-x-2">
-                      {competitor.classementGeneral <= 3 && getRankIcon(competitor.classementGeneral)}
-                      <span className={`font-bold text-lg ${
-                        competitor.classementGeneral === 1 ? 'text-yellow-600' :
-                        competitor.classementGeneral === 2 ? 'text-gray-500' :
-                        competitor.classementGeneral === 3 ? 'text-amber-600' :
-                        competitor.classementGeneral === 120 ? 'text-gray-400' :
-                        'text-ocean-600'
-                      }`}>
-                        {competitor.classementGeneral}
-                      </span>
+                      {competitor.nbPrisesGlobal === 0 && competitor.poidsTotal === 0 && competitor.grossePrise === 0 ? (
+                        <span className="text-gray-400 dark:text-gray-500">—</span>
+                      ) : (
+                        <>
+                          {competitor.classementGeneral <= 3 && getRankIcon(competitor.classementGeneral)}
+                          <span className={`font-bold text-lg ${
+                            competitor.classementGeneral === 1 ? 'text-yellow-600' :
+                            competitor.classementGeneral === 2 ? 'text-gray-500' :
+                            competitor.classementGeneral === 3 ? 'text-amber-600' :
+                            competitor.classementGeneral === 120 ? 'text-gray-400' :
+                            'text-ocean-600'
+                          }`}>
+                            {competitor.classementGeneral}
+                          </span>
+                        </>
+                      )}
                     </div>
                   </td>
                 </tr>
