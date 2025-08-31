@@ -58,6 +58,7 @@ export default function AdminCompetiteurs() {
   const [isSaving, setIsSaving] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const [selectedCompetitor, setSelectedCompetitor] = useState<any>(null);
 
   const sectors = ['A', 'B', 'C', 'D', 'E', 'F'];
 
@@ -264,10 +265,13 @@ export default function AdminCompetiteurs() {
     );
   }, [currentCompetitors, searchQuery]);
 
-  // Get selected competitor
-  const selectedCompetitor = selectedCompetitorId 
-    ? currentCompetitors.find(c => c.id === selectedCompetitorId)
-    : null;
+  // Update selected competitor when ID or competitors change
+  useEffect(() => {
+    const competitor = selectedCompetitorId 
+      ? currentCompetitors.find(c => c.id === selectedCompetitorId)
+      : null;
+    setSelectedCompetitor(competitor);
+  }, [selectedCompetitorId, currentCompetitors]);
 
   const getSectorColor = (sector: string) => {
     const colors: { [key: string]: string } = {
@@ -425,7 +429,7 @@ export default function AdminCompetiteurs() {
       reader.onload = (e) => {
         const result = e.target?.result as string;
         setFormData(prev => ({ ...prev, photo: result }));
-        setPhotoPreview(result);
+        status: 'active' as 'active' | 'inactive'
       };
       reader.readAsDataURL(file);
     }
