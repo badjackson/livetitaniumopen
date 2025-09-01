@@ -32,13 +32,13 @@ export interface UserSession {
 const usernameToEmail = (username: string): string => {
   const mappings: { [key: string]: string } = {
     'Black@2050': 'admin@titanium-f7b50.com',
-    'juge.a': 'juge.a@titanium-f7b50.com',
-    'juge.b': 'juge.b@titanium-f7b50.com',
-    'juge.c': 'juge.c@titanium-f7b50.com',
-    'juge.d': 'juge.d@titanium-f7b50.com',
-    'juge.e': 'juge.e@titanium-f7b50.com',
-    'juge.f': 'juge.f@titanium-f7b50.com',
-  };
+    'juge.a': 'juge.a@titaniumopen.com',
+    'juge.b': 'juge.b@titaniumopen.com', 
+    'juge.c': 'juge.c@titaniumopen.com',
+    'juge.d': 'juge.d@titaniumopen.com',
+    'juge.e': 'juge.e@titaniumopen.com',
+    'juge.f': 'juge.f@titaniumopen.com',
+    'Black@2050': 'admin@titaniumopen.com'
   
   // If it's already an email, return as is
   if (username.includes('@')) {
@@ -56,7 +56,7 @@ export const loginWithFirebase = async (username: string, password: string) => {
     const user = userCredential.user;
     
     // Get judge document from Firestore
-    const judgeDoc = await getDoc(doc(db, 'judges', user.uid));
+    const judgeDoc = await getDoc(doc(db, 'users', user.uid));
     
     if (!judgeDoc.exists()) {
       // If judge document doesn't exist, create a basic user session for now
@@ -65,8 +65,8 @@ export const loginWithFirebase = async (username: string, password: string) => {
         id: user.uid,
         name: user.displayName || user.email?.split('@')[0] || 'Unknown',
         username: user.email?.split('@')[0] || 'unknown',
-        role: user.email === 'admin@titanium-f7b50.com' ? 'admin' : 'judge',
-        sector: user.email === 'admin@titanium-f7b50.com' ? null : 'A',
+        role: user.email === 'admin@titaniumopen.com' ? 'admin' : 'judge',
+        sector: user.email === 'admin@titaniumopen.com' ? null : 'A',
         loginTime: new Date().toISOString()
       };
       
@@ -76,19 +76,19 @@ export const loginWithFirebase = async (username: string, password: string) => {
       return { success: true, user: userData };
     }
     
-    const judgeData = judgeDoc.data() as JudgeDoc;
+    const judgeData = judgeDoc.data() as any;
     
-    if (judgeData.status !== 'active') {
+    if (judgeData.status && judgeData.status !== 'active') {
       throw new Error('User account is inactive');
     }
     
     // Create user session
     const userSession: UserSession = {
       id: user.uid,
-      name: judgeData.name,
-      username: judgeData.username,
-      role: judgeData.role,
-      sector: judgeData.sector,
+      name: judgeData.name || user.email?.split('@')[0] || 'Unknown',
+      username: judgeData.username || user.email?.split('@')[0] || 'unknown',
+      role: judgeData.role || 'judge',
+      sector: judgeData.sector || 'A',
       loginTime: new Date().toISOString()
     };
     
