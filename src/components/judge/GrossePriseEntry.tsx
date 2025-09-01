@@ -29,7 +29,8 @@ import {
   Plus,
   Minus,
   ChevronRight,
-  ChevronLeft
+  ChevronLeft,
+  ArrowUpDown
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { formatWeight, formatNumber, formatTime } from '@/lib/utils';
@@ -82,8 +83,25 @@ const getCompetitorsForSector = (sector: string): Competitor[] => {
   return [];
 };
 
-// Calculate total competitors
-const totalCompetitors = 20; // Always 20 per sector
+  const totalCompetitors = mockCompetitors.length;
+
+  // Don't render if no sector assigned
+  if (!judgeSector) {
+    return (
+      <div className="h-screen flex items-center justify-center">
+        <div className="text-center">
+          <AlertTriangle className="w-12 h-12 mx-auto mb-4 text-red-600" />
+          <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-2">
+            Secteur non assigné
+          </h2>
+          <p className="text-gray-600 dark:text-gray-300">
+            Aucun secteur n'est assigné à votre compte. Contactez l'administrateur.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
 export default function GrossePriseEntry() {
   const t = useTranslations('judge');
   const { currentUser } = useCurrentUser();
@@ -103,7 +121,7 @@ export default function GrossePriseEntry() {
   const [isOnlineSimulation, setIsOnlineSimulation] = useState(true);
 
   // Get judge's assigned sector
-  const judgeSector = currentUser?.sector || 'A';
+  const judgeSector = currentUser?.sector;
 
   // Dynamic competitors based on judge's assigned sector
   const [mockCompetitors, setMockCompetitors] = useState<Competitor[]>([]);
@@ -111,6 +129,7 @@ export default function GrossePriseEntry() {
   // Load competitors on mount and listen for changes
   useEffect(() => {
     const loadCompetitors = () => {
+      if (!judgeSector) return;
       const competitors = getCompetitorsForSector(judgeSector);
       setMockCompetitors(competitors);
     };
@@ -134,6 +153,7 @@ export default function GrossePriseEntry() {
   // Load persisted data on mount
   useEffect(() => {
     const loadPersistedData = () => {
+      if (!judgeSector) return;
       if (typeof window !== 'undefined') {
         try {
           // Try to load from localStorage first
@@ -263,6 +283,7 @@ export default function GrossePriseEntry() {
 
   // Filter competitors based on search and incomplete filter
   const filteredCompetitors = useMemo(() => {
+    if (!judgeSector) return [];
     let filtered = mockCompetitors;
     
     if (searchQuery) {
@@ -753,25 +774,45 @@ export default function GrossePriseEntry() {
               <thead className="bg-gray-50 dark:bg-gray-800 sticky top-0 z-10">
                 <tr>
                   <th className="sticky left-0 bg-gray-50 dark:bg-gray-800 px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider border-r border-gray-200 dark:border-gray-700">
-                    Action
+                    <div className="flex items-center space-x-1">
+                      <span>Action</span>
+                    </div>
                   </th>
                   <th className="sticky left-16 bg-gray-50 dark:bg-gray-800 px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider border-r border-gray-200 dark:border-gray-700">
-                    BOX N°
+                    <div className="flex items-center space-x-1 cursor-pointer hover:text-gray-700 dark:hover:text-gray-200">
+                      <span>BOX N°</span>
+                      <ArrowUpDown className="w-3 h-3" />
+                    </div>
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                    Compétiteur
+                    <div className="flex items-center space-x-1 cursor-pointer hover:text-gray-700 dark:hover:text-gray-200">
+                      <span>Compétiteur</span>
+                      <ArrowUpDown className="w-3 h-3" />
+                    </div>
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                    Équipe
+                    <div className="flex items-center space-x-1 cursor-pointer hover:text-gray-700 dark:hover:text-gray-200">
+                      <span>Équipe</span>
+                      <ArrowUpDown className="w-3 h-3" />
+                    </div>
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                    Grosse prise (g)
+                    <div className="flex items-center space-x-1 cursor-pointer hover:text-gray-700 dark:hover:text-gray-200">
+                      <span>Grosse prise (g)</span>
+                      <ArrowUpDown className="w-3 h-3" />
+                    </div>
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                    Heure
+                    <div className="flex items-center space-x-1 cursor-pointer hover:text-gray-700 dark:hover:text-gray-200">
+                      <span>Heure</span>
+                      <ArrowUpDown className="w-3 h-3" />
+                    </div>
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                    Statut
+                    <div className="flex items-center space-x-1 cursor-pointer hover:text-gray-700 dark:hover:text-gray-200">
+                      <span>Statut</span>
+                      <ArrowUpDown className="w-3 h-3" />
+                    </div>
                   </th>
                 </tr>
               </thead>

@@ -30,7 +30,8 @@ import {
   Plus,
   Minus,
   ChevronRight,
-  ChevronLeft
+  ChevronLeft,
+  ArrowUpDown
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { formatWeight, formatNumber, formatTime } from '@/lib/utils';
@@ -82,10 +83,11 @@ export default function HourlyDataEntry() {
   const [isSaving, setIsSaving] = useState(false);
 
   // Get judge's assigned sector
-  const judgeSector = currentUser?.sector || 'A';
+  const judgeSector = currentUser?.sector;
 
   // Get competitors for judge's sector from Firebase
   const mockCompetitors = useMemo(() => {
+    if (!judgeSector) return [];
     return firestoreCompetitors
       .filter(comp => comp.sector === judgeSector)
       .map(comp => ({
@@ -429,6 +431,23 @@ export default function HourlyDataEntry() {
 
   const totalCompetitors = mockCompetitors.length;
 
+  // Don't render if no sector assigned
+  if (!judgeSector) {
+    return (
+      <div className="h-screen flex items-center justify-center">
+        <div className="text-center">
+          <AlertTriangle className="w-12 h-12 mx-auto mb-4 text-red-600" />
+          <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-2">
+            Secteur non assigné
+          </h2>
+          <p className="text-gray-600 dark:text-gray-300">
+            Aucun secteur n'est assigné à votre compte. Contactez l'administrateur.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="h-screen flex flex-col">
       {/* Connection Status Bar */}
@@ -563,28 +582,51 @@ export default function HourlyDataEntry() {
               <thead className="bg-gray-50 dark:bg-gray-800 sticky top-0 z-10">
                 <tr>
                   <th className="sticky left-0 bg-gray-50 dark:bg-gray-800 px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider border-r border-gray-200 dark:border-gray-700">
-                    {t('action')}
+                    <div className="flex items-center space-x-1">
+                      <span>{t('action')}</span>
+                    </div>
                   </th>
                   <th className="sticky left-16 bg-gray-50 dark:bg-gray-800 px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider border-r border-gray-200 dark:border-gray-700">
-                    {t('boxNumber')}
+                    <div className="flex items-center space-x-1 cursor-pointer hover:text-gray-700 dark:hover:text-gray-200">
+                      <span>{t('boxNumber')}</span>
+                      <ArrowUpDown className="w-3 h-3" />
+                    </div>
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                    {t('competitor')}
+                    <div className="flex items-center space-x-1 cursor-pointer hover:text-gray-700 dark:hover:text-gray-200">
+                      <span>{t('competitor')}</span>
+                      <ArrowUpDown className="w-3 h-3" />
+                    </div>
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                    {t('club')}
+                    <div className="flex items-center space-x-1 cursor-pointer hover:text-gray-700 dark:hover:text-gray-200">
+                      <span>{t('club')}</span>
+                      <ArrowUpDown className="w-3 h-3" />
+                    </div>
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                    {t('fishCountShort')}
+                    <div className="flex items-center space-x-1 cursor-pointer hover:text-gray-700 dark:hover:text-gray-200">
+                      <span>{t('fishCountShort')}</span>
+                      <ArrowUpDown className="w-3 h-3" />
+                    </div>
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                    {t('totalWeightShort')}
+                    <div className="flex items-center space-x-1 cursor-pointer hover:text-gray-700 dark:hover:text-gray-200">
+                      <span>{t('totalWeightShort')}</span>
+                      <ArrowUpDown className="w-3 h-3" />
+                    </div>
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                    {t('hour')}
+                    <div className="flex items-center space-x-1 cursor-pointer hover:text-gray-700 dark:hover:text-gray-200">
+                      <span>{t('hour')}</span>
+                      <ArrowUpDown className="w-3 h-3" />
+                    </div>
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                    {t('status')}
+                    <div className="flex items-center space-x-1 cursor-pointer hover:text-gray-700 dark:hover:text-gray-200">
+                      <span>{t('status')}</span>
+                      <ArrowUpDown className="w-3 h-3" />
+                    </div>
                   </th>
                 </tr>
               </thead>
