@@ -74,6 +74,8 @@ export default function HourlyDataEntry() {
   const [showIncompleteOnly, setShowIncompleteOnly] = useState(false);
   const [isEditorCollapsed, setIsEditorCollapsed] = useState(false);
   const [isOnlineSimulation, setIsOnlineSimulation] = useState(true);
+  const [sortField, setSortField] = useState('boxNumber');
+  const [sortDirection, setSortDirection] = useState('asc');
 
   // Editor state
   const [selectedCompetitorId, setSelectedCompetitorId] = useState<string | null>(null);
@@ -322,7 +324,10 @@ export default function HourlyDataEntry() {
     setIsSaving(true);
 
     const entryData = {
-      id: `${judgeSector}-${currentHour}-${selectedCompetitor.id}`,
+      id: `${judgeSector}-
+    }
+  }
+}${currentHour}-${selectedCompetitor.id}`,
       sector: judgeSector,
       hour: currentHour,
       competitorId: selectedCompetitor.id,
@@ -412,6 +417,15 @@ export default function HourlyDataEntry() {
     }, 800);
   };
 
+  const handleSort = (field: string) => {
+    if (sortField === field) {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortDirection('desc');
+    }
+  };
+
   // Check if there are any incomplete competitors
   const hasIncompleteCompetitors = useMemo(() => {
     return mockCompetitors.some(comp => {
@@ -431,7 +445,6 @@ export default function HourlyDataEntry() {
 
   const totalCompetitors = mockCompetitors.length;
 
-  // Don't render if no sector assigned
   if (!judgeSector) {
     return (
       <div className="h-screen flex items-center justify-center">
