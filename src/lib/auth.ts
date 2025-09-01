@@ -31,15 +31,15 @@ export interface UserSession {
 // Username to email mapping
 const usernameToEmail = (username: string): string => {
   const mappings: { [key: string]: string } = {
-    'Black@2050': 'admin@titanium-f7b50.com',
+    'Black2051': 'admin@titanium-f7b50.com',
     'juge.a': 'juge.a@titaniumopen.com',
     'juge.b': 'juge.b@titaniumopen.com', 
     'juge.c': 'juge.c@titaniumopen.com',
     'juge.d': 'juge.d@titaniumopen.com',
     'juge.e': 'juge.e@titaniumopen.com',
     'juge.f': 'juge.f@titaniumopen.com',
-    'Black@2050': 'admin@titaniumopen.com'
-  
+    'Black2050': 'admin@titaniumopen.com',
+  }
   // If it's already an email, return as is
   if (username.includes('@')) {
     return username;

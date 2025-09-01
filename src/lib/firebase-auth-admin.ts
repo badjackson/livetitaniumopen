@@ -1,8 +1,10 @@
 export interface JudgeAuthData {
   uid?: string;
+  name: string;
   email: string;
   password: string;
   displayName: string;
+  status: string;
   sector: string;
   role: 'judge' | 'admin';
   isActive: boolean;
@@ -38,7 +40,7 @@ export class FirebaseAuthAdmin {
   /**
    * Create a new user with Firebase Auth Admin SDK
    */
-  async createUser(userData: JudgeAuthData): Promise<CreateUserResult> {
+  async createUser(userData: JudgeAuthData | Record<string, any>): Promise<CreateUserResult> {
     try {
       const response = await fetch(`${this.baseUrl}/create-user`, {
         method: 'POST',

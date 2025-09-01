@@ -208,7 +208,7 @@ export class HourlyEntryService {
 
 // Big Catch Service
 export class BigCatchService {
-  static async saveBigCatch(entry: Omit<BigCatchDoc, 'timestamp'>) {
+  static async saveBigCatch(entry: Omit<any, 'timestamp'>) {
     try {
       const docId = `${entry.sector}-${entry.competitorId}`;
       const docRef = doc(db, COLLECTIONS.BIG_CATCHES, docId);

@@ -439,7 +439,7 @@ export default function AdminGrossePrise() {
             </div>
           </div>
         </div>
-      </div>
+      
 
       {/* Filters and Actions */}
       <div className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 p-4">
@@ -477,6 +477,7 @@ export default function AdminGrossePrise() {
               <option value="error">Erreur</option>
             </select>
           </div>
+          
           <Button
             variant="outline"
             size="sm"

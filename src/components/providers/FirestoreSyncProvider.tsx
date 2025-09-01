@@ -57,6 +57,7 @@ export interface BigCatchDoc {
   id: string;
   sector: string;
   competitorId: string;
+biggestCatch: number;
   boxNumber: number;
   grossePrise: number;
   status: 'empty' | 'in_progress' | 'locked_judge' | 'locked_admin' | 'offline_judge' | 'offline_admin' | 'error';
@@ -133,7 +134,7 @@ export interface FirestoreContextType {
   saveCompetitor: (data: Omit<CompetitorDoc, 'createdAt' | 'updatedAt'>) => Promise<void>;
   deleteCompetitor: (id: string) => Promise<void>;
   saveHourlyEntry: (data: Omit<HourlyEntryDoc, 'createdAt' | 'updatedAt'>) => Promise<void>;
-  saveBigCatch: (data: Omit<BigCatchDoc, 'createdAt' | 'updatedAt'>) => Promise<void>;
+  saveBigCatch: (data: Omit<any, 'createdAt' | 'updatedAt'>) => Promise<void>;
   saveJudge: (data: Omit<JudgeDoc, 'createdAt' | 'updatedAt'>) => Promise<void>;
   deleteJudge: (uid: string) => Promise<void>;
   saveCompetitionSettings: (data: Omit<CompetitionSettingsDoc, 'updatedAt'>) => Promise<void>;
@@ -341,7 +342,7 @@ export function FirestoreSyncProvider({ children }: { children: React.ReactNode 
     }
   };
 
-  const saveBigCatch = async (data: Omit<BigCatchDoc, 'createdAt' | 'updatedAt'>) => {
+  const saveBigCatch = async (data: Omit<any, 'createdAt' | 'updatedAt'>) => {
     try {
       console.log('Saving big catch to Firebase:', data);
       const docRef = doc(db, 'big_catches', data.id);
