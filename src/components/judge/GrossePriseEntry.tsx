@@ -339,7 +339,7 @@ export default function GrossePriseEntry() {
       window.removeEventListener('offline', handleOffline);
       window.removeEventListener('online', handleOnlineSync);
     };
-  }, []);
+  }, [judgeSector]);
 
   // Load entry data when competitor is selected
   useEffect(() => {
@@ -1105,8 +1105,5 @@ export default function GrossePriseEntry() {
       </div>
       </>
       )}
-        </>
-      )}
     </div>
   );
-}
