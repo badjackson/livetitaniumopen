@@ -445,22 +445,6 @@ export default function HourlyDataEntry() {
 
   const totalCompetitors = mockCompetitors.length;
 
-  if (!judgeSector) {
-    return (
-      <div className="h-screen flex items-center justify-center">
-        <div className="text-center">
-          <AlertTriangle className="w-12 h-12 mx-auto mb-4 text-red-600" />
-          <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-2">
-            Secteur non assigné
-          </h2>
-          <p className="text-gray-600 dark:text-gray-300">
-            Aucun secteur n'est assigné à votre compte. Contactez l'administrateur.
-          </p>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="h-screen flex flex-col">
       {/* Connection Status Bar */}

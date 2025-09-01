@@ -536,21 +536,7 @@ export default function GrossePriseEntry() {
   }).length;
 
   return (
-    <div className="judge-grosse-prise-entry">
-      {!judgeSector ? (
-        <div className="h-screen flex items-center justify-center">
-          <div className="text-center">
-            <AlertTriangle className="w-12 h-12 mx-auto mb-4 text-red-600" />
-            <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-2">
-              Secteur non assigné
-            </h2>
-            <p className="text-gray-600 dark:text-gray-300">
-              Aucun secteur n'est assigné à votre compte. Contactez l'administrateur.
-            </p>
-          </div>
-        </div>
-      ) : (
-        <div className="h-screen flex flex-col">
+    <div className="h-screen flex flex-col">
       {/* Connection Status Bar */}
       <div className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 px-6 py-2">
         <div className="flex items-center justify-between">
