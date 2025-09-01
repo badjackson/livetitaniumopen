@@ -9,6 +9,9 @@ import {
   deleteDoc,
   query, 
   orderBy,
+  where,
+  getDocs,
+  updateDoc,
   Timestamp 
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
@@ -23,8 +26,9 @@ export interface CompetitorDoc {
   equipe: string;
   photo: string;
   status: 'active' | 'inactive';
-  nbPrisesGlobal?: number;
-  poidsTotal?: number;
+  // Champs calculés
+  nbPrisesGlobal?: number;       // Somme fishCount H1-H7
+   poidsTotalGlobal?: number;     // Somme totalWeight H1-H7
   grossePrise?: number;
   points?: number;
   coefficientSecteur?: number;
@@ -54,7 +58,7 @@ export interface BigCatchDoc {
   sector: string;
   competitorId: string;
   boxNumber: number;
-  biggestCatch: number;
+  grossePrise: number;
   status: 'empty' | 'in_progress' | 'locked_judge' | 'locked_admin' | 'offline_judge' | 'offline_admin' | 'error';
   source: 'Judge' | 'Admin';
   updatedBy?: string;
@@ -126,7 +130,6 @@ export interface FirestoreContextType {
   judges: JudgeDoc[];
   competitionSettings: CompetitionSettingsDoc | null;
   publicAppearanceSettings: PublicAppearanceSettingsDoc | null;
-  auditLogs: AuditLogDoc[];
   saveCompetitor: (data: Omit<CompetitorDoc, 'createdAt' | 'updatedAt'>) => Promise<void>;
   deleteCompetitor: (id: string) => Promise<void>;
   saveHourlyEntry: (data: Omit<HourlyEntryDoc, 'createdAt' | 'updatedAt'>) => Promise<void>;
@@ -135,7 +138,6 @@ export interface FirestoreContextType {
   deleteJudge: (uid: string) => Promise<void>;
   saveCompetitionSettings: (data: Omit<CompetitionSettingsDoc, 'updatedAt'>) => Promise<void>;
   savePublicAppearanceSettings: (data: Omit<PublicAppearanceSettingsDoc, 'updatedAt'>) => Promise<void>;
-  auditLog: (data: Omit<AuditLogDoc, 'id' | 'timestamp'>) => Promise<void>;
   loading: boolean;
   error: string | null;
 }
@@ -151,7 +153,6 @@ export function FirestoreSyncProvider({ children }: { children: React.ReactNode 
   const [judges, setJudges] = useState<JudgeDoc[]>([]);
   const [competitionSettings, setCompetitionSettings] = useState<CompetitionSettingsDoc | null>(null);
   const [publicAppearanceSettings, setPublicAppearanceSettings] = useState<PublicAppearanceSettingsDoc | null>(null);
-  const [auditLogs, setAuditLogs] = useState<AuditLogDoc[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -195,6 +196,7 @@ export function FirestoreSyncProvider({ children }: { children: React.ReactNode 
             ...doc.data()
           } as HourlyEntryDoc));
           setHourlyEntries(data);
+          console.log('Hourly entries loaded from Firebase:', data.length);
         },
         (error) => {
           console.error('Error fetching hourly entries:', error);
@@ -217,6 +219,7 @@ export function FirestoreSyncProvider({ children }: { children: React.ReactNode 
             ...doc.data()
           } as BigCatchDoc));
           setBigCatches(data);
+          console.log('Big catches loaded from Firebase:', data.length);
         },
         (error) => {
           console.error('Error fetching big catches:', error);
@@ -249,7 +252,7 @@ export function FirestoreSyncProvider({ children }: { children: React.ReactNode 
 
       // Subscribe to competition settings
       const unsubSettings = onSnapshot(
-        doc(db, 'settings', 'competition'),
+        doc(db, 'competitionSettings', 'main'),
         (snapshot) => {
           if (snapshot.exists()) {
             setCompetitionSettings({
@@ -267,7 +270,7 @@ export function FirestoreSyncProvider({ children }: { children: React.ReactNode 
 
       // Subscribe to public appearance settings
       const unsubAppearance = onSnapshot(
-        doc(db, 'settings', 'public_appearance'),
+        doc(db, 'publicAppearanceSettings', 'main'),
         (snapshot) => {
           if (snapshot.exists()) {
             setPublicAppearanceSettings({
@@ -282,28 +285,6 @@ export function FirestoreSyncProvider({ children }: { children: React.ReactNode 
         }
       );
       unsubscribers.push(unsubAppearance);
-
-      // Subscribe to audit logs
-      const auditQuery = query(
-        collection(db, 'audit_logs'),
-        orderBy('timestamp', 'desc')
-      );
-      
-      const unsubAudit = onSnapshot(
-        auditQuery,
-        (snapshot) => {
-          const data = snapshot.docs.map(doc => ({
-            id: doc.id,
-            ...doc.data()
-          } as AuditLogDoc));
-          setAuditLogs(data);
-        },
-        (error) => {
-          console.error('Error fetching audit logs:', error);
-          setError(error.message);
-        }
-      );
-      unsubscribers.push(unsubAudit);
 
       setLoading(false);
     } catch (err) {
@@ -343,11 +324,17 @@ export function FirestoreSyncProvider({ children }: { children: React.ReactNode 
 
   const saveHourlyEntry = async (data: Omit<HourlyEntryDoc, 'createdAt' | 'updatedAt'>) => {
     try {
+      console.log('Saving hourly entry to Firebase:', data);
       const docRef = doc(db, 'hourly_entries', data.id);
       await setDoc(docRef, {
         ...data,
+        createdAt: Timestamp.now(),
         updatedAt: Timestamp.now()
       }, { merge: true });
+      console.log('Hourly entry saved successfully to Firebase');
+      
+      // Auto-calculate competitor totals after saving hourly entry
+      await recalculateCompetitorTotals(data.competitorId);
     } catch (err) {
       console.error('Error saving hourly entry:', err);
       throw err;
@@ -356,11 +343,17 @@ export function FirestoreSyncProvider({ children }: { children: React.ReactNode 
 
   const saveBigCatch = async (data: Omit<BigCatchDoc, 'createdAt' | 'updatedAt'>) => {
     try {
+      console.log('Saving big catch to Firebase:', data);
       const docRef = doc(db, 'big_catches', data.id);
       await setDoc(docRef, {
         ...data,
+        createdAt: Timestamp.now(),
         updatedAt: Timestamp.now()
       }, { merge: true });
+      console.log('Big catch saved successfully to Firebase');
+      
+      // Auto-calculate competitor totals after saving big catch
+      await recalculateCompetitorTotals(data.competitorId);
     } catch (err) {
       console.error('Error saving big catch:', err);
       throw err;
@@ -391,7 +384,7 @@ export function FirestoreSyncProvider({ children }: { children: React.ReactNode 
 
   const saveCompetitionSettings = async (data: Omit<CompetitionSettingsDoc, 'updatedAt'>) => {
     try {
-      const docRef = doc(db, 'settings', 'competition');
+      const docRef = doc(db, 'competitionSettings', 'main');
       await setDoc(docRef, {
         ...data,
         updatedAt: Timestamp.now()
@@ -404,7 +397,7 @@ export function FirestoreSyncProvider({ children }: { children: React.ReactNode 
 
   const savePublicAppearanceSettings = async (data: Omit<PublicAppearanceSettingsDoc, 'updatedAt'>) => {
     try {
-      const docRef = doc(db, 'settings', 'public_appearance');
+      const docRef = doc(db, 'publicAppearanceSettings', 'main');
       await setDoc(docRef, {
         ...data,
         updatedAt: Timestamp.now()
@@ -415,16 +408,149 @@ export function FirestoreSyncProvider({ children }: { children: React.ReactNode 
     }
   };
 
-  const auditLog = async (data: Omit<AuditLogDoc, 'id' | 'timestamp'>) => {
+  // Auto-calculation function
+  const recalculateCompetitorTotals = async (competitorId: string) => {
     try {
-      const docRef = doc(collection(db, 'audit_logs'));
-      await setDoc(docRef, {
-        ...data,
-        timestamp: Timestamp.now()
+      // Get competitor info first
+      const competitorDoc = competitors.find(c => c.id === competitorId);
+      if (!competitorDoc) return;
+      
+      const sector = competitorDoc.sector;
+      
+      // Get all hourly entries for this competitor
+      const hourlyEntriesSnapshot = await getDocs(
+        query(collection(db, 'hourly_entries'), where('competitorId', '==', competitorId))
+      );
+      
+      // Calculate totals
+      let nbPrisesGlobal = 0;
+      let poidsTotalGlobal = 0;
+      
+      hourlyEntriesSnapshot.docs.forEach(doc => {
+        const entry = doc.data();
+        if (['locked_judge', 'locked_admin', 'offline_judge', 'offline_admin'].includes(entry.status)) {
+          nbPrisesGlobal += entry.fishCount || 0;
+          poidsTotalGlobal += entry.totalWeight || 0;
+        }
       });
-    } catch (err) {
-      console.error('Error saving audit log:', err);
-      throw err;
+      
+      // Get grosse prise
+      const bigCatchSnapshot = await getDocs(
+        query(collection(db, 'big_catches'), where('competitorId', '==', competitorId))
+      );
+      
+      let grossePrise = 0;
+      if (!bigCatchSnapshot.empty) {
+        const bigCatchData = bigCatchSnapshot.docs[0].data();
+        if (['locked_judge', 'locked_admin', 'offline_judge', 'offline_admin'].includes(bigCatchData.status)) {
+          grossePrise = bigCatchData.grossePrise || 0;
+        }
+      }
+      
+      // Calculate points
+      const points = (nbPrisesGlobal * 50) + poidsTotalGlobal;
+      
+      // Calculate coefficientSecteur
+      // First, get all competitors in the same sector to calculate sector total
+      const sectorCompetitorsSnapshot = await getDocs(
+        query(collection(db, 'competitors'), where('sector', '==', sector))
+      );
+      
+      let sectorTotalNbPrises = 0;
+      
+      // Calculate sector total from all competitors in this sector
+      for (const sectorCompDoc of sectorCompetitorsSnapshot.docs) {
+        const sectorCompId = sectorCompDoc.id;
+        
+        // Get hourly entries for this sector competitor
+        const sectorHourlySnapshot = await getDocs(
+          query(collection(db, 'hourly_entries'), where('competitorId', '==', sectorCompId))
+        );
+        
+        let compNbPrises = 0;
+        sectorHourlySnapshot.docs.forEach(doc => {
+          const entry = doc.data();
+          if (['locked_judge', 'locked_admin', 'offline_judge', 'offline_admin'].includes(entry.status)) {
+            compNbPrises += entry.fishCount || 0;
+          }
+        });
+        
+        sectorTotalNbPrises += compNbPrises;
+      }
+      
+      // Calculate coefficient: (Points × Nb Prises global) / Total Nb Prises global Secteur
+      let coefficientSecteur = 0;
+      if (sectorTotalNbPrises > 0) {
+        coefficientSecteur = (points * nbPrisesGlobal) / sectorTotalNbPrises;
+      }
+      
+      // Update competitor document with coefficient
+      await updateDoc(doc(db, 'competitors', competitorId), {
+        nbPrisesGlobal,
+        poidsTotalGlobal,
+        grossePrise,
+        points,
+        coefficientSecteur,
+        updatedAt: Timestamp.now()
+      });
+      
+      console.log(`Auto-calculated totals for ${competitorId}:`, {
+        nbPrisesGlobal,
+        poidsTotalGlobal,
+        grossePrise,
+        points,
+        coefficientSecteur
+      });
+      
+      // Also recalculate coefficients for all other competitors in the same sector
+      // since the sector total has changed
+      setTimeout(async () => {
+        try {
+          for (const sectorCompDoc of sectorCompetitorsSnapshot.docs) {
+            const otherCompId = sectorCompDoc.id;
+            if (otherCompId !== competitorId) {
+              await recalculateCompetitorCoefficient(otherCompId, sector, sectorTotalNbPrises);
+            }
+          }
+        } catch (error) {
+          console.error('Error recalculating sector coefficients:', error);
+        }
+      }, 1000);
+      
+    } catch (error) {
+      console.error('Error auto-calculating competitor totals:', error);
+    }
+  };
+
+  // Helper function to recalculate coefficient for a specific competitor
+  const recalculateCompetitorCoefficient = async (competitorId: string, sector: string, sectorTotalNbPrises: number) => {
+    try {
+      // Get competitor's current data
+      const competitorSnapshot = await getDocs(
+        query(collection(db, 'competitors'), where('__name__', '==', competitorId))
+      );
+      
+      if (competitorSnapshot.empty) return;
+      
+      const competitorData = competitorSnapshot.docs[0].data();
+      const points = competitorData.points || 0;
+      const nbPrisesGlobal = competitorData.nbPrisesGlobal || 0;
+      
+      // Calculate new coefficient
+      let coefficientSecteur = 0;
+      if (sectorTotalNbPrises > 0) {
+        coefficientSecteur = (points * nbPrisesGlobal) / sectorTotalNbPrises;
+      }
+      
+      // Update only the coefficient
+      await updateDoc(doc(db, 'competitors', competitorId), {
+        coefficientSecteur,
+        updatedAt: Timestamp.now()
+      });
+      
+      console.log(`Updated coefficient for ${competitorId}: ${coefficientSecteur}`);
+    } catch (error) {
+      console.error(`Error updating coefficient for ${competitorId}:`, error);
     }
   };
 
@@ -435,7 +561,6 @@ export function FirestoreSyncProvider({ children }: { children: React.ReactNode 
     judges,
     competitionSettings,
     publicAppearanceSettings,
-    auditLogs,
     saveCompetitor,
     deleteCompetitor,
     saveHourlyEntry,
@@ -444,7 +569,6 @@ export function FirestoreSyncProvider({ children }: { children: React.ReactNode 
     deleteJudge,
     saveCompetitionSettings,
     savePublicAppearanceSettings,
-    auditLog,
     loading,
     error
   };
