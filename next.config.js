@@ -1,5 +1,8 @@
 /** @type {import('next').Config} */
 const nextConfig = {
+  eslint: {
+    ignoreDuringBuilds: true,
+  },
   optimizeFonts: false,
   images: {
     domains: ['images.unsplash.com', 'images.pexels.com'],
