@@ -1,5 +1,7 @@
 'use client';
 
+'use client';
+
 import { ReactNode, createContext, useContext } from 'react';
 import messages from '@messages/fr.json';
 

@@ -4,7 +4,7 @@ import './globals.css';
 import { ThemeProvider } from '@/components/providers/ThemeProvider';
 import { SocketProvider } from '@/components/providers/SocketProvider';
 import { TranslationProvider } from '@/components/providers/TranslationProvider';
-import FirestoreSyncProvider from '@/components/providers/FirestoreSyncProvider';
+import { FirestoreSyncProvider } from '@/components/providers/FirestoreSyncProvider';
 
 const inter = Inter({ subsets: ['latin'] });
 

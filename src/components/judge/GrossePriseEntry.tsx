@@ -101,7 +101,7 @@ export default function GrossePriseEntry() {
   }, [firestoreCompetitors, judgeSector]);
 
   // Get entries from Firebase
-  const entries = useMemo(() => {
+  const entriesFromFirebase = useMemo(() => {
     const entriesMap: { [competitorId: string]: GrossePriseEntry } = {};
     
     firestoreBigCatches
@@ -966,8 +966,6 @@ export default function GrossePriseEntry() {
           )}
         </div>
       </div>
-      </div>
-      )}
     </div>
   );
 }
