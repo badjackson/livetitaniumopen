@@ -83,25 +83,6 @@ const getCompetitorsForSector = (sector: string): Competitor[] => {
   return [];
 };
 
-  const totalCompetitors = mockCompetitors.length;
-
-  // Don't render if no sector assigned
-  if (!judgeSector) {
-    return (
-      <div className="h-screen flex items-center justify-center">
-        <div className="text-center">
-          <AlertTriangle className="w-12 h-12 mx-auto mb-4 text-red-600" />
-          <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-2">
-            Secteur non assigné
-          </h2>
-          <p className="text-gray-600 dark:text-gray-300">
-            Aucun secteur n'est assigné à votre compte. Contactez l'administrateur.
-          </p>
-        </div>
-      </div>
-    );
-  }
-
 export default function GrossePriseEntry() {
   const t = useTranslations('judge');
   const { currentUser } = useCurrentUser();
@@ -667,13 +648,11 @@ export default function GrossePriseEntry() {
           document.body.removeChild(notice);
         }
       }, 3000);
-      
-      return true;
     }
-    return false;
   };
 
   // Calculate completion stats
+  const totalCompetitors = mockCompetitors.length;
   const completedEntries = mockCompetitors.filter(comp => {
     const entry = entries[comp.id];
     return entry && ['locked_judge', 'locked_admin', 'offline_judge', 'offline_admin'].includes(entry.status);
@@ -681,6 +660,20 @@ export default function GrossePriseEntry() {
 
   return (
     <div className="h-screen flex flex-col">
+      {!judgeSector ? (
+        <div className="h-screen flex items-center justify-center">
+          <div className="text-center">
+            <AlertTriangle className="w-12 h-12 mx-auto mb-4 text-red-600" />
+            <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-2">
+              Secteur non assigné
+            </h2>
+            <p className="text-gray-600 dark:text-gray-300">
+              Aucun secteur n'est assigné à votre compte. Contactez l'administrateur.
+            </p>
+          </div>
+        </div>
+      ) : (
+        <>
       {/* Connection Status Bar */}
       <div className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 px-6 py-2">
         <div className="flex items-center justify-between">
@@ -1110,6 +1103,10 @@ export default function GrossePriseEntry() {
           )}
         </div>
       </div>
+      </>
+      )}
+        </>
+      )}
     </div>
   );
 }
